@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistAddCheckCircle
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -135,11 +136,16 @@ import com.nuvio.app.features.trakt.TraktCommentReview
 import com.nuvio.app.features.trakt.TraktCommentsRepository
 import com.nuvio.app.features.trakt.TraktCommentsSettings
 import com.nuvio.app.features.trakt.TraktConnectionMode
+import com.nuvio.app.features.simkl.SimklAuthRepository
+import com.nuvio.app.features.simkl.SimklConnectionMode
+import com.nuvio.app.features.simkl.SimklRewatchMode
+import com.nuvio.app.features.tracking.RewatchIntentRepository
 import com.nuvio.app.features.tracking.TrackingLibraryTab
 import com.nuvio.app.features.tracking.TrackingMembershipApplyResult
 import com.nuvio.app.features.tracking.toggleTrackingLibraryMembership
 import com.nuvio.app.features.tracking.TrackingSettingsRepository
 import com.nuvio.app.features.tracking.TrackingProviderId
+import com.nuvio.app.features.tracking.normalizeRewatchIntentKey
 import com.nuvio.app.features.trailer.TrailerPlaybackResolver
 import com.nuvio.app.features.trailer.TrailerPlaybackSource
 import com.nuvio.app.features.watched.WatchedRepository
@@ -2272,6 +2278,16 @@ private fun ConfiguredMetaSections(
 ) {
     val enabledItems = settings.items.filter { it.enabled }
 
+    // Simkl rewatches are opt-in per title. Manual recording is armed here and consumed by the
+    // scrobble path, which is the only place that decides whether to send `allow_rewatch=yes`.
+    val trackingSettings by TrackingSettingsRepository.uiState.collectAsStateWithLifecycle()
+    val simklAuthState by SimklAuthRepository.uiState.collectAsStateWithLifecycle()
+    val armedRewatchKeys by RewatchIntentRepository.armedKeys.collectAsStateWithLifecycle()
+    val rewatchArmed = normalizeRewatchIntentKey(meta.id) in armedRewatchKeys
+    val showRewatchAction = trackingSettings.simklRewatchMode == SimklRewatchMode.MANUAL &&
+        simklAuthState.mode == SimklConnectionMode.CONNECTED &&
+        isWatched
+
     // Helper to check if a section actually has content to show
     val sectionHasContent: (MetaScreenSectionKey) -> Boolean = { key ->
         when (key) {
@@ -2295,8 +2311,45 @@ private fun ConfiguredMetaSections(
                 DetailActions(
                     playLabel = playButtonLabel,
                     playEnabled = isPrimaryPlayEnabled,
-                    isSaved = isSaved,
-                    isWatched = isWatched,
+                    secondaryActions = buildList {
+                        add(DetailSecondaryAction(
+                            label = if (isWatched) {
+                                stringResource(Res.string.hero_mark_unwatched)
+                            } else {
+                                stringResource(Res.string.hero_mark_watched)
+                            },
+                            icon = if (isWatched) {
+                                Icons.Default.CheckCircle
+                            } else {
+                                Icons.Default.CheckCircleOutline
+                            },
+                            isActive = isWatched,
+                            onClick = onWatchedClick,
+                        ))
+                        add(DetailSecondaryAction(
+                            label = if (isSaved) {
+                                stringResource(Res.string.hero_remove_from_library)
+                            } else {
+                                stringResource(Res.string.hero_add_to_library)
+                            },
+                            icon = if (isSaved) {
+                                Icons.Default.Check
+                            } else {
+                                Icons.Default.Add
+                            },
+                            isActive = isSaved,
+                            onClick = onSaveClick,
+                            onLongClick = onSaveLongClick,
+                        ))
+                        if (showRewatchAction) {
+                            add(DetailSecondaryAction(
+                                label = stringResource(Res.string.hero_watch_again),
+                                icon = Icons.Default.Replay,
+                                isActive = rewatchArmed,
+                                onClick = { RewatchIntentRepository.toggleContent(meta.id) },
+                            ))
+                        }
+                    },
                     isTablet = isTablet,
                     shuffleEnabled = shuffleEnabled,
                     onPlayClick = onPrimaryPlayClick,
