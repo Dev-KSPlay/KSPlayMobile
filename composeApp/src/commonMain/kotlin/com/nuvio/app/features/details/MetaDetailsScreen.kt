@@ -610,6 +610,11 @@ fun MetaDetailsScreen(
                 val movieProgress = progressByVideoId[meta.id]
                     ?.takeUnless { it.isCompleted }
                 val cwPrefs by ContinueWatchingPreferencesRepository.uiState.collectAsStateWithLifecycle()
+                // A rewatch the user follows from Continue Watching decides which episode Play
+                // offers, so the button keeps following the run instead of the old watch position.
+                val rewatchRun = remember(cwPrefs.rewatchContinueWatchingSeeds, meta.id) {
+                    cwPrefs.rewatchContinueWatchingSeeds.values.firstOrNull { seed -> seed.matches(meta.id) }
+                }
                 val shuffleSettings = shuffleProfile.settings(meta.id, meta.type)
                 val hasShuffleEpisodes = remember(meta.videos) {
                     meta.videos.any { (it.season ?: 0) > 0 && (it.episode ?: 0) > 0 }
@@ -625,7 +630,7 @@ fun MetaDetailsScreen(
                 } else {
                     null
                 }
-                val seriesAction = remember(watchProgressUiState.entries, watchedUiState.items, meta, todayIsoDate, cwPrefs.upNextFromFurthestEpisode, watchedUiState.watchedKeys, shuffleSettings, shuffleVisit, shuffleProfileId) {
+                val seriesAction = remember(watchProgressUiState.entries, watchedUiState.items, meta, todayIsoDate, cwPrefs.upNextFromFurthestEpisode, watchedUiState.watchedKeys, shuffleSettings, shuffleVisit, shuffleProfileId, rewatchRun) {
                     if (shuffleSettings.enabled) meta.shufflePrimaryAction(
                         profileId = shuffleProfileId,
                         settings = shuffleSettings,
@@ -641,6 +646,8 @@ fun MetaDetailsScreen(
                             preferFurthestEpisode = cwPrefs.upNextFromFurthestEpisode,
                             watchedKeys = watchedUiState.watchedKeys,
                             allowRewatch = true,
+                            rewatchSeasonNumber = rewatchRun?.seasonNumber,
+                            rewatchEpisodeNumber = rewatchRun?.episodeNumber,
                         )
                     }
                 }
