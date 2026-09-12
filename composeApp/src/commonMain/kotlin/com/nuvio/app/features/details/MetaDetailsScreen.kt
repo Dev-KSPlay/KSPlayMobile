@@ -135,6 +135,7 @@ import com.nuvio.app.features.trakt.TraktCommentReview
 import com.nuvio.app.features.trakt.TraktCommentsRepository
 import com.nuvio.app.features.trakt.TraktCommentsSettings
 import com.nuvio.app.features.trakt.TraktConnectionMode
+import com.nuvio.app.features.simkl.SimklSyncRepository
 import com.nuvio.app.features.tracking.TrackingLibraryTab
 import com.nuvio.app.features.tracking.TrackingMembershipApplyResult
 import com.nuvio.app.features.tracking.toggleTrackingLibraryMembership
@@ -610,10 +611,11 @@ fun MetaDetailsScreen(
                 val movieProgress = progressByVideoId[meta.id]
                     ?.takeUnless { it.isCompleted }
                 val cwPrefs by ContinueWatchingPreferencesRepository.uiState.collectAsStateWithLifecycle()
-                // A rewatch the user follows from Continue Watching decides which episode Play
-                // offers, so the button keeps following the run instead of the old watch position.
-                val rewatchRun = remember(cwPrefs.rewatchContinueWatchingSeeds, meta.id) {
-                    cwPrefs.rewatchContinueWatchingSeeds.values.firstOrNull { seed -> seed.matches(meta.id) }
+                // A rewatch run the account is in the middle of decides which episode Play offers, so
+                // the button keeps following the run instead of the old watch position.
+                val simklRewatchRuns = SimklSyncRepository.state.collectAsStateWithLifecycle().value.snapshot.rewatchRuns
+                val rewatchRun = remember(simklRewatchRuns, meta.id) {
+                    simklRewatchRuns.firstOrNull { run -> run.matches(meta.id) }
                 }
                 val shuffleSettings = shuffleProfile.settings(meta.id, meta.type)
                 val hasShuffleEpisodes = remember(meta.videos) {
