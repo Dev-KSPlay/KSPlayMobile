@@ -195,5 +195,4 @@ object ContinueWatchingPreferencesRepository {
             ),
         )
     }
-
 }
