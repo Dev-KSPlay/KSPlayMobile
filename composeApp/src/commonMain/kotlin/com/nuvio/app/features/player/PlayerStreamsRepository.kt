@@ -568,3 +568,4 @@ private fun StreamsUiState.streamDiagnostics(): String {
 
 private fun com.nuvio.app.features.addons.ManagedAddon.streamAddonInstanceId(manifestId: String): String =
     "addon:$manifestId:$manifestUrl"
+
