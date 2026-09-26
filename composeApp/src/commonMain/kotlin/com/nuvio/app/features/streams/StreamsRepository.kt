@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import com.nuvio.app.core.build.AppFeaturePolicy
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.buildAddonResourceUrl
+import com.nuvio.app.features.addons.externalAddonType
 import com.nuvio.app.features.addons.enabledAddons
 import com.nuvio.app.features.addons.fetchAddonResponseText
 import com.nuvio.app.features.debrid.DirectDebridStreamPreparer
@@ -46,7 +47,7 @@ object StreamsRepository {
         episode: Int? = null,
         manualSelection: Boolean = false,
     ): String =
-        "$type::$videoId::$season::$episode::$manualSelection"
+        "${externalAddonType(type, season, episode)}::$videoId::$season::$episode::$manualSelection"
 
     fun load(type: String, videoId: String, parentMetaId: String? = null, season: Int? = null, episode: Int? = null, manualSelection: Boolean = false) {
         PluginRepository.setLocalPluginSearchPaused(false)
@@ -75,6 +76,7 @@ object StreamsRepository {
     }
 
     private fun load(type: String, videoId: String, parentMetaId: String?, season: Int?, episode: Int?, manualSelection: Boolean, forceRefresh: Boolean) {
+        val externalType = externalAddonType(type, season, episode)
         val pluginUiState = if (AppFeaturePolicy.pluginsEnabled) {
             PluginRepository.initialize()
             PluginRepository.uiState.value
@@ -82,7 +84,7 @@ object StreamsRepository {
             PluginsUiState(pluginsEnabled = false)
         }
         val requestToken = requestToken(
-            type = type,
+            type = externalType,
             videoId = videoId,
             season = season,
             episode = episode,
@@ -95,7 +97,7 @@ object StreamsRepository {
             activeRequestKey == requestKey &&
             (currentState.groups.isNotEmpty() || currentState.emptyStateReason != null || currentState.isAnyLoading)
         ) {
-            log.d { "Skipping stream reload for unchanged request type=$type id=$videoId" }
+            log.d { "Skipping stream reload for unchanged request type=$externalType id=$videoId" }
             return
         }
 
@@ -138,7 +140,7 @@ object StreamsRepository {
 
         val embeddedStreams = MetaDetailsRepository.findEmbeddedStreams(videoId)
         if (embeddedStreams.isNotEmpty()) {
-            log.d { "Using ${embeddedStreams.size} embedded streams for type=$type id=$videoId" }
+            log.d { "Using ${embeddedStreams.size} embedded streams for type=$externalType id=$videoId" }
             val group = AddonStreamGroup(
                 addonName = embeddedStreams.first().addonName,
                 addonId = "embedded",
@@ -164,7 +166,7 @@ object StreamsRepository {
         val preferredGroupIds = serverSources.filter { it.preferred }.mapTo(mutableSetOf()) { it.addonId }
         val installedAddons = if (isNativeServerRequest) emptyList() else AddonRepository.uiState.value.addons.enabledAddons()
         val pluginScrapers = if (AppFeaturePolicy.pluginsEnabled && !isNativeServerRequest) {
-            PluginRepository.getEnabledScrapersForType(type)
+            PluginRepository.getEnabledScrapersForType(externalType)
         } else {
             emptyList()
         }
@@ -186,7 +188,7 @@ object StreamsRepository {
         val streamAddons = installedAddons
             .mapNotNull { addon ->
                 val manifest = addon.manifest ?: return@mapNotNull null
-                if (!manifest.supportsStream(type, videoId)) return@mapNotNull null
+                if (!manifest.supportsStream(externalType, videoId)) return@mapNotNull null
 
                 InstalledStreamAddonTarget(
                     addonName = addon.displayTitle.ifBlank { manifest.name },
@@ -425,7 +427,7 @@ object StreamsRepository {
                     val url = buildAddonResourceUrl(
                         manifestUrl = addon.manifest.transportUrl,
                         resource = "stream",
-                        type = type,
+                        type = externalType,
                         id = videoId,
                     )
                     log.d { "Fetching streams from: $url" }
@@ -482,7 +484,7 @@ object StreamsRepository {
                                 season = season,
                                 episode = episode,
                             ),
-                            mediaType = type,
+                            mediaType = externalType,
                             season = season,
                             episode = episode,
                         ).fold(
