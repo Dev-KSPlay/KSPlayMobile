@@ -1209,9 +1209,6 @@ struct NativeNavContentView: View {
     @StateObject private var iconStore = NativeTabIconStore()
 
     private var usesNativeTabBar: Bool {
-        guard UIDevice.current.userInterfaceIdiom == .phone else {
-            return false
-        }
         if #available(iOS 26.0, *) {
             return true
         }
