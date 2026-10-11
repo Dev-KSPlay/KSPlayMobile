@@ -510,7 +510,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         skipIntervals = emptyList()
         autoSkippedIntervals.clear()
         lastManualSkipSeekPositions = null
-        activeSkipInterval = null
+        detectedSkipInterval = null
         skipIntervalDismissed = false
         showNextEpisodeCard = false
         nextEpisodeCardDismissed = false
@@ -558,7 +558,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         lastManualSkipSeekPositions,
     ) {
         if (skipIntervals.isEmpty()) {
-            activeSkipInterval = null
+            detectedSkipInterval = null
             return@LaunchedEffect
         }
         val positionSec = playbackSnapshot.positionMs / 1000.0
@@ -569,8 +569,8 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
             positionSec >= interval.startTime && positionSec < interval.endTime &&
                 interval.internalSkipAction(skipIntervals, playbackSnapshot.durationMs) != null
         }
-        if (current != activeSkipInterval) {
-            activeSkipInterval = current
+        if (current != detectedSkipInterval) {
+            detectedSkipInterval = current
             if (current != null) skipIntervalDismissed = false
         }
         val controller = playerController

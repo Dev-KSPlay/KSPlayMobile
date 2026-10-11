@@ -440,6 +440,7 @@ private fun BoxScope.RenderPlaybackOverlays(
         activeSkipInterval = activeSkipInterval,
         skipsToPostCredits = activeSkipInterval?.internalSkipAction(skipIntervals, playbackSnapshot.durationMs)?.skipsToPostCredits == true,
         skipIntervalDismissed = skipIntervalDismissed,
+        skipPromptResetToken = skipPromptResetToken,
         controlsVisible = controlsVisible,
         onSkipInterval = { interval ->
             interval.internalSkipAction(skipIntervals, playbackSnapshot.durationMs)?.let { action ->
