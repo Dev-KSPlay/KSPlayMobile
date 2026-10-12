@@ -1,0 +1,401 @@
+diff --git a/composeApp/src/androidMain/kotlin/com/nuvio/app/features/player/PlayerPlatformEffects.android.kt b/composeApp/src/androidMain/kotlin/com/nuvio/app/features/player/PlayerPlatformEffects.android.kt
+index e0cadb8..de89c8f 100644
+--- a/composeApp/src/androidMain/kotlin/com/nuvio/app/features/player/PlayerPlatformEffects.android.kt
++++ b/composeApp/src/androidMain/kotlin/com/nuvio/app/features/player/PlayerPlatformEffects.android.kt
+@@ -35,11 +35,63 @@ actual fun LockPlayerToLandscape() {
+     if (!activity.shouldForceLandscapePlayer()) return
+ 
+     DisposableEffect(activity) {
+-        val previousOrientation = activity.requestedOrientation
+-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
++        PlayerOrientationLocks.acquire(activity, PlayerOrientationLocks.Kind.Landscape)
+ 
+         onDispose {
+-            activity.requestedOrientation = previousOrientation
++            PlayerOrientationLocks.release(activity, PlayerOrientationLocks.Kind.Landscape)
++        }
++    }
++}
++
++@Composable
++actual fun LockPlayerToPortrait() {
++    val activity = LocalContext.current.findActivity() ?: return
++
++    DisposableEffect(activity) {
++        PlayerOrientationLocks.acquire(activity, PlayerOrientationLocks.Kind.Portrait)
++
++        onDispose {
++            PlayerOrientationLocks.release(activity, PlayerOrientationLocks.Kind.Portrait)
++        }
++    }
++}
++
++/**
++ * Shared, ref-counted orientation lock state (mirrors the iOS coordinator).
++ * Portrait (manual vertical video) takes priority over landscape; when no lock is held the
++ * orientation that was requested before the first lock is restored. Centralising this avoids
++ * per-effect save/restore races when the two effects are disposed in an arbitrary order.
++ */
++private object PlayerOrientationLocks {
++    enum class Kind { Landscape, Portrait }
++
++    private var landscapeCount = 0
++    private var portraitCount = 0
++    private var baselineOrientation: Int? = null
++
++    fun acquire(activity: Activity, kind: Kind) {
++        if (baselineOrientation == null) baselineOrientation = activity.requestedOrientation
++        when (kind) {
++            Kind.Landscape -> landscapeCount += 1
++            Kind.Portrait -> portraitCount += 1
++        }
++        apply(activity)
++    }
++
++    fun release(activity: Activity, kind: Kind) {
++        when (kind) {
++            Kind.Landscape -> landscapeCount = (landscapeCount - 1).coerceAtLeast(0)
++            Kind.Portrait -> portraitCount = (portraitCount - 1).coerceAtLeast(0)
++        }
++        apply(activity)
++    }
++
++    private fun apply(activity: Activity) {
++        activity.requestedOrientation = when {
++            portraitCount > 0 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
++            landscapeCount > 0 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
++            else -> (baselineOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
++                .also { baselineOrientation = null }
+         }
+     }
+ }
+diff --git a/composeApp/src/commonMain/composeResources/values/strings.xml b/composeApp/src/commonMain/composeResources/values/strings.xml
+index 3136ec6..ab2ee2a 100644
+--- a/composeApp/src/commonMain/composeResources/values/strings.xml
++++ b/composeApp/src/commonMain/composeResources/values/strings.xml
+@@ -2004,6 +2004,7 @@
+     <!-- PlayerControls a11y -->
+     <string name="player_action_submit_intro">Submit Intro</string>
+     <string name="player_action_video_settings">Video settings</string>
++    <string name="player_vertical_video">Vertical Video</string>
+     <!-- CloudLibrary -->
+     <string name="cloud_library_provider_unavailable">Cloud library is not available for %1$s.</string>
+     <!-- Player iOS video settings modal -->
+diff --git a/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerControlActions.kt b/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerControlActions.kt
+index 6b0c541..8c04a3c 100644
+--- a/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerControlActions.kt
++++ b/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerControlActions.kt
+@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Lock
+ import androidx.compose.material.icons.rounded.LockOpen
+ import androidx.compose.material.icons.rounded.SkipNext
+ import androidx.compose.material.icons.rounded.Speed
++import androidx.compose.material.icons.rounded.StayCurrentPortrait
+ import androidx.compose.material.icons.rounded.SwapHoriz
+ import androidx.compose.material3.Icon
+ import androidx.compose.material3.IconButton
+@@ -97,6 +98,8 @@ internal fun PlayerControlActions(
+     onSwitchEngineClick: (() -> Unit)?,
+     onSpeedClick: () -> Unit,
+     onResizeModeClick: () -> Unit,
++    isVerticalVideoMode: Boolean,
++    onVerticalVideoClick: (() -> Unit)?,
+     onVideoSettingsClick: (() -> Unit)?,
+     onOpenInExternalPlayer: (() -> Unit)?,
+     onStreamInfoClick: () -> Unit,
+@@ -144,6 +147,13 @@ internal fun PlayerControlActions(
+             stringResource(resizeMode.labelRes), onResizeModeClick,
+             painter = appIconPainter(AppIconResource.PlayerAspectRatio),
+         ),
++        onVerticalVideoClick?.let {
++            PlayerControlAction(
++                stringResource(Res.string.player_vertical_video), it,
++                icon = Icons.Rounded.StayCurrentPortrait,
++                isActive = isVerticalVideoMode,
++            )
++        },
+         onOpenInExternalPlayer?.let {
+             PlayerControlAction(
+                 stringResource(Res.string.streams_open_external_player), it,
+@@ -194,6 +204,7 @@ internal fun PlayerControlActions(
+                         icon = action.icon,
+                         painter = action.painter,
+                         iconSize = action.iconSize,
++                        isActive = action.isActive,
+                     )
+                 }
+                 if (hasOverflow) {
+@@ -240,12 +251,14 @@ private fun PlayerAction(
+     icon: ImageVector? = null,
+     painter: Painter? = null,
+     iconSize: Dp = 24.dp,
++    isActive: Boolean = false,
+ ) {
++    val tint = if (isActive) MaterialTheme.colorScheme.primary else Color.White
+     IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+         if (painter != null) {
+-            Icon(painter, description, tint = Color.White, modifier = Modifier.size(iconSize))
++            Icon(painter, description, tint = tint, modifier = Modifier.size(iconSize))
+         } else if (icon != null) {
+-            Icon(icon, description, tint = Color.White, modifier = Modifier.size(iconSize))
++            Icon(icon, description, tint = tint, modifier = Modifier.size(iconSize))
+         }
+     }
+ }
+@@ -256,4 +269,5 @@ private data class PlayerControlAction(
+     val icon: ImageVector? = null,
+     val painter: Painter? = null,
+     val iconSize: Dp = 24.dp,
++    val isActive: Boolean = false,
+ )
+diff --git a/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerControls.kt b/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerControls.kt
+index 225e866..33711e8 100644
+--- a/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerControls.kt
++++ b/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerControls.kt
+@@ -106,6 +106,8 @@ internal fun PlayerControlsShell(
+     onSpeedClick: () -> Unit,
+     onSubtitleClick: () -> Unit,
+     onAudioClick: () -> Unit,
++    isVerticalVideoMode: Boolean = false,
++    onVerticalVideoClick: (() -> Unit)? = null,
+     onVideoSettingsClick: (() -> Unit)? = null,
+     onSourcesClick: (() -> Unit)? = null,
+     onEpisodesClick: (() -> Unit)? = null,
+@@ -307,6 +309,8 @@ internal fun PlayerControlsShell(
+                         onSwitchEngineClick = onSwitchEngineClick,
+                         onSpeedClick = onSpeedClick,
+                         onResizeModeClick = onResizeModeClick,
++                        isVerticalVideoMode = isVerticalVideoMode,
++                        onVerticalVideoClick = onVerticalVideoClick,
+                         onVideoSettingsClick = onVideoSettingsClick,
+                         onOpenInExternalPlayer = onOpenInExternalPlayer,
+                         onStreamInfoClick = onStreamInfoClick,
+diff --git a/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerPlatformEffects.kt b/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerPlatformEffects.kt
+index 8005076..c55e7be 100644
+--- a/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerPlatformEffects.kt
++++ b/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerPlatformEffects.kt
+@@ -20,6 +20,14 @@ data class PlayerAudioLevel(
+ @Composable
+ expect fun LockPlayerToLandscape()
+ 
++/**
++ * Locks the device to portrait while this composable is in the composition
++ * (manual "Vertical Video" mode). Takes priority over [LockPlayerToLandscape];
++ * when it leaves the composition, any still-active landscape lock is restored.
++ */
++@Composable
++expect fun LockPlayerToPortrait()
++
+ @Composable
+ expect fun FullscreenPlayerDialog(
+     onDismiss: () -> Unit,
+diff --git a/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerScreenRuntimeGestureActions.kt b/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerScreenRuntimeGestureActions.kt
+index d54bb1e..fd01b56 100644
+--- a/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerScreenRuntimeGestureActions.kt
++++ b/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerScreenRuntimeGestureActions.kt
+@@ -231,6 +231,15 @@ internal fun PlayerScreenRuntime.cycleResizeMode() {
+     controlsVisible = true
+ }
+ 
++/**
++ * Toggles manual vertical video mode. The orientation lock itself is applied
++ * declaratively by [LockPlayerToPortrait] in RenderPlayerRuntimeUi while the flag is set.
++ */
++internal fun PlayerScreenRuntime.toggleVerticalVideoMode() {
++    manualVerticalVideoMode = !manualVerticalVideoMode
++    controlsVisible = true
++}
++
+ internal fun PlayerScreenRuntime.cyclePlaybackSpeed() {
+     val speeds = listOf(1f, 1.25f, 1.5f, 2f)
+     val current = playbackSnapshot.playbackSpeed
+diff --git a/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerScreenRuntimeState.kt b/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerScreenRuntimeState.kt
+index 650f1f3..c86a8f2 100644
+--- a/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerScreenRuntimeState.kt
++++ b/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerScreenRuntimeState.kt
+@@ -127,6 +127,8 @@ internal class PlayerScreenRuntime(
+     var activeInitialProgressFraction by mutableStateOf(initialProgressFraction)
+     var shouldPlay by mutableStateOf(true)
+     var resizeMode by mutableStateOf(playerSettingsUiState.resizeMode)
++    /** Manual "Vertical Video" mode: while true the player holds a portrait orientation lock. */
++    var manualVerticalVideoMode by mutableStateOf(false)
+     var layoutSize by mutableStateOf(IntSize.Zero)
+     var playbackSnapshot by mutableStateOf(PlayerPlaybackSnapshot())
+     var playbackSnapshotKey by mutableStateOf<PlaybackKey?>(null)
+diff --git a/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerScreenRuntimeUi.kt b/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerScreenRuntimeUi.kt
+index e425be1..05d433d 100644
+--- a/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerScreenRuntimeUi.kt
++++ b/composeApp/src/commonMain/kotlin/com/nuvio/app/features/player/PlayerScreenRuntimeUi.kt
+@@ -114,6 +114,12 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
+     val gestureCallbacks = rememberSurfaceGestureCallbacks()
+     val playbackGesturesEnabled = initialLoadCompleted && errorMessage == null
+ 
++    // Manual vertical video mode overrides the app-level landscape lock (MainAppContent)
++    // for as long as it is enabled; leaving the composition restores the previous lock.
++    if (manualVerticalVideoMode && !isInPip) {
++        LockPlayerToPortrait()
++    }
++
+     Box(
+         modifier = Modifier
+             .fillMaxSize()
+@@ -307,6 +313,8 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long,
+             onSeekForward = { seekBy(10_000L) },
+             onResizeModeClick = { cycleResizeMode() },
+             onSpeedClick = { cyclePlaybackSpeed() },
++            isVerticalVideoMode = manualVerticalVideoMode,
++            onVerticalVideoClick = { toggleVerticalVideoMode() },
+             onSubtitleClick = {
+                 refreshTracks()
+                 showSubtitleModal = true
+diff --git a/composeApp/src/iosMain/kotlin/com/nuvio/app/features/player/PlayerPlatformEffects.ios.kt b/composeApp/src/iosMain/kotlin/com/nuvio/app/features/player/PlayerPlatformEffects.ios.kt
+index cf2452e..0fa8d76 100644
+--- a/composeApp/src/iosMain/kotlin/com/nuvio/app/features/player/PlayerPlatformEffects.ios.kt
++++ b/composeApp/src/iosMain/kotlin/com/nuvio/app/features/player/PlayerPlatformEffects.ios.kt
+@@ -15,26 +15,51 @@ import platform.UIKit.UIScreen
+ import platform.UIKit.UISlider
+ 
+ private const val lockPlayerToLandscapeNotification = "NuvioPlayerLockLandscape"
++private const val lockPlayerToPortraitNotification = "NuvioPlayerLockPortrait"
+ private const val unlockPlayerOrientationNotification = "NuvioPlayerUnlockOrientation"
+ private var playerLandscapeLockCount = 0
++private var playerPortraitLockCount = 0
++
++private fun postPlayerOrientationNotification(name: String) {
++    NSNotificationCenter.defaultCenter.postNotificationName(name, null)
++}
+ 
+ @Composable
+ actual fun LockPlayerToLandscape() {
+     DisposableEffect(Unit) {
+         playerLandscapeLockCount += 1
+-        if (playerLandscapeLockCount == 1) {
+-            NSNotificationCenter.defaultCenter.postNotificationName(
+-                lockPlayerToLandscapeNotification,
+-                null,
+-            )
++        // A manual portrait (vertical video) lock takes priority over landscape.
++        if (playerLandscapeLockCount == 1 && playerPortraitLockCount == 0) {
++            postPlayerOrientationNotification(lockPlayerToLandscapeNotification)
+         }
+ 
+         onDispose {
+             playerLandscapeLockCount -= 1
+-            if (playerLandscapeLockCount == 0) {
+-                NSNotificationCenter.defaultCenter.postNotificationName(
+-                    unlockPlayerOrientationNotification,
+-                    null,
++            if (playerLandscapeLockCount == 0 && playerPortraitLockCount == 0) {
++                postPlayerOrientationNotification(unlockPlayerOrientationNotification)
++            }
++        }
++    }
++}
++
++@Composable
++actual fun LockPlayerToPortrait() {
++    DisposableEffect(Unit) {
++        playerPortraitLockCount += 1
++        if (playerPortraitLockCount == 1) {
++            postPlayerOrientationNotification(lockPlayerToPortraitNotification)
++        }
++
++        onDispose {
++            playerPortraitLockCount -= 1
++            if (playerPortraitLockCount == 0) {
++                // Fall back to the landscape lock if the player still holds one.
++                postPlayerOrientationNotification(
++                    if (playerLandscapeLockCount > 0) {
++                        lockPlayerToLandscapeNotification
++                    } else {
++                        unlockPlayerOrientationNotification
++                    },
+                 )
+             }
+         }
+diff --git a/iosApp/iosApp/OrientationLockCoordinator.swift b/iosApp/iosApp/OrientationLockCoordinator.swift
+index 26d80c4..9427d7d 100644
+--- a/iosApp/iosApp/OrientationLockCoordinator.swift
++++ b/iosApp/iosApp/OrientationLockCoordinator.swift
+@@ -3,6 +3,7 @@ import UserNotifications
+ import ComposeApp
+ 
+ private let lockPlayerToLandscapeNotification = Notification.Name("NuvioPlayerLockLandscape")
++private let lockPlayerToPortraitNotification = Notification.Name("NuvioPlayerLockPortrait")
+ private let unlockPlayerOrientationNotification = Notification.Name("NuvioPlayerUnlockOrientation")
+ 
+ final class OrientationLockAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+@@ -61,6 +62,21 @@ final class OrientationLockAppDelegate: NSObject, UIApplicationDelegate, UNUserN
+ final class OrientationLockCoordinator {
+     static let shared = OrientationLockCoordinator()
+ 
++    /// Orientation modes the player can request via NotificationCenter.
++    private enum PlayerOrientationLock {
++        case none
++        case landscape
++        case portrait
++
++        var mask: UIInterfaceOrientationMask {
++            switch self {
++            case .none: return .allButUpsideDown
++            case .landscape: return .landscape
++            case .portrait: return .portrait
++            }
++        }
++    }
++
+     private(set) var supportedOrientations: UIInterfaceOrientationMask = .allButUpsideDown
+     private var observers: [NSObjectProtocol] = []
+ 
+@@ -72,23 +88,28 @@ final class OrientationLockCoordinator {
+         let center = NotificationCenter.default
+         observers.append(
+             center.addObserver(forName: lockPlayerToLandscapeNotification, object: nil, queue: .main) { [weak self] _ in
+-                self?.setLandscapeLock(enabled: true)
++                self?.applyLock(.landscape)
++            }
++        )
++        observers.append(
++            center.addObserver(forName: lockPlayerToPortraitNotification, object: nil, queue: .main) { [weak self] _ in
++                self?.applyLock(.portrait)
+             }
+         )
+         observers.append(
+             center.addObserver(forName: unlockPlayerOrientationNotification, object: nil, queue: .main) { [weak self] _ in
+-                self?.setLandscapeLock(enabled: false)
++                self?.applyLock(.none)
+             }
+         )
+     }
+ 
+-    private func setLandscapeLock(enabled: Bool) {
+-        let nextOrientations: UIInterfaceOrientationMask = enabled ? .landscape : .allButUpsideDown
++    private func applyLock(_ lock: PlayerOrientationLock) {
++        let nextOrientations = lock.mask
+         supportedOrientations = nextOrientations
+-        requestOrientationUpdate(for: nextOrientations, forceRotate: enabled)
++        requestOrientationUpdate(for: nextOrientations, lock: lock)
+     }
+ 
+-    private func requestOrientationUpdate(for mask: UIInterfaceOrientationMask, forceRotate: Bool) {
++    private func requestOrientationUpdate(for mask: UIInterfaceOrientationMask, lock: PlayerOrientationLock) {
+         if #available(iOS 16.0, *) {
+             let preferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: mask)
+             UIApplication.shared.connectedScenes
+@@ -105,10 +126,15 @@ final class OrientationLockCoordinator {
+                     window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+                 }
+         } else {
+-            if forceRotate {
++            switch lock {
++            case .landscape:
+                 UIDevice.current.setValue(preferredLandscapeOrientation.rawValue, forKey: "orientation")
+-            } else if UIDevice.current.orientation.isPortrait {
++            case .portrait:
+                 UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
++            case .none:
++                if UIDevice.current.orientation.isPortrait {
++                    UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
++                }
+             }
+             UIViewController.attemptRotationToDeviceOrientation()
+         }

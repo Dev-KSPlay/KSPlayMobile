@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.StayCurrentPortrait
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -97,6 +98,9 @@ internal fun PlayerControlActions(
     onSwitchEngineClick: (() -> Unit)?,
     onSpeedClick: () -> Unit,
     onResizeModeClick: () -> Unit,
+    isVerticalVideoMode: Boolean,
+    isVerticalVideoAuto: Boolean,
+    onVerticalVideoClick: (() -> Unit)?,
     onVideoSettingsClick: (() -> Unit)?,
     onOpenInExternalPlayer: (() -> Unit)?,
     onStreamInfoClick: () -> Unit,
@@ -144,6 +148,16 @@ internal fun PlayerControlActions(
             stringResource(resizeMode.labelRes), onResizeModeClick,
             painter = appIconPainter(AppIconResource.PlayerAspectRatio),
         ),
+        onVerticalVideoClick?.let {
+            PlayerControlAction(
+                stringResource(
+                    if (isVerticalVideoAuto) Res.string.player_vertical_video_auto else Res.string.player_vertical_video,
+                ),
+                it,
+                icon = Icons.Rounded.StayCurrentPortrait,
+                isActive = isVerticalVideoMode,
+            )
+        },
         onOpenInExternalPlayer?.let {
             PlayerControlAction(
                 stringResource(Res.string.streams_open_external_player), it,
@@ -194,6 +208,7 @@ internal fun PlayerControlActions(
                         icon = action.icon,
                         painter = action.painter,
                         iconSize = action.iconSize,
+                        isActive = action.isActive,
                     )
                 }
                 if (hasOverflow) {
@@ -240,12 +255,14 @@ private fun PlayerAction(
     icon: ImageVector? = null,
     painter: Painter? = null,
     iconSize: Dp = 24.dp,
+    isActive: Boolean = false,
 ) {
+    val tint = if (isActive) MaterialTheme.colorScheme.primary else Color.White
     IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
         if (painter != null) {
-            Icon(painter, description, tint = Color.White, modifier = Modifier.size(iconSize))
+            Icon(painter, description, tint = tint, modifier = Modifier.size(iconSize))
         } else if (icon != null) {
-            Icon(icon, description, tint = Color.White, modifier = Modifier.size(iconSize))
+            Icon(icon, description, tint = tint, modifier = Modifier.size(iconSize))
         }
     }
 }
@@ -256,4 +273,5 @@ private data class PlayerControlAction(
     val icon: ImageVector? = null,
     val painter: Painter? = null,
     val iconSize: Dp = 24.dp,
+    val isActive: Boolean = false,
 )

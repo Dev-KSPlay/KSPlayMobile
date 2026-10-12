@@ -35,11 +35,63 @@ actual fun LockPlayerToLandscape() {
     if (!activity.shouldForceLandscapePlayer()) return
 
     DisposableEffect(activity) {
-        val previousOrientation = activity.requestedOrientation
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        PlayerOrientationLocks.acquire(activity, PlayerOrientationLocks.Kind.Landscape)
 
         onDispose {
-            activity.requestedOrientation = previousOrientation
+            PlayerOrientationLocks.release(activity, PlayerOrientationLocks.Kind.Landscape)
+        }
+    }
+}
+
+@Composable
+actual fun LockPlayerToPortrait() {
+    val activity = LocalContext.current.findActivity() ?: return
+
+    DisposableEffect(activity) {
+        PlayerOrientationLocks.acquire(activity, PlayerOrientationLocks.Kind.Portrait)
+
+        onDispose {
+            PlayerOrientationLocks.release(activity, PlayerOrientationLocks.Kind.Portrait)
+        }
+    }
+}
+
+/**
+ * Shared, ref-counted orientation lock state (mirrors the iOS coordinator).
+ * Portrait (manual vertical video) takes priority over landscape; when no lock is held the
+ * orientation that was requested before the first lock is restored. Centralising this avoids
+ * per-effect save/restore races when the two effects are disposed in an arbitrary order.
+ */
+private object PlayerOrientationLocks {
+    enum class Kind { Landscape, Portrait }
+
+    private var landscapeCount = 0
+    private var portraitCount = 0
+    private var baselineOrientation: Int? = null
+
+    fun acquire(activity: Activity, kind: Kind) {
+        if (baselineOrientation == null) baselineOrientation = activity.requestedOrientation
+        when (kind) {
+            Kind.Landscape -> landscapeCount += 1
+            Kind.Portrait -> portraitCount += 1
+        }
+        apply(activity)
+    }
+
+    fun release(activity: Activity, kind: Kind) {
+        when (kind) {
+            Kind.Landscape -> landscapeCount = (landscapeCount - 1).coerceAtLeast(0)
+            Kind.Portrait -> portraitCount = (portraitCount - 1).coerceAtLeast(0)
+        }
+        apply(activity)
+    }
+
+    private fun apply(activity: Activity) {
+        activity.requestedOrientation = when {
+            portraitCount > 0 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            landscapeCount > 0 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else -> (baselineOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
+                .also { baselineOrientation = null }
         }
     }
 }
