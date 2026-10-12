@@ -20,6 +20,14 @@ data class PlayerAudioLevel(
 @Composable
 expect fun LockPlayerToLandscape()
 
+/**
+ * Locks the device to portrait while this composable is in the composition
+ * (manual "Vertical Video" mode). Takes priority over [LockPlayerToLandscape];
+ * when it leaves the composition, any still-active landscape lock is restored.
+ */
+@Composable
+expect fun LockPlayerToPortrait()
+
 @Composable
 expect fun FullscreenPlayerDialog(
     onDismiss: () -> Unit,

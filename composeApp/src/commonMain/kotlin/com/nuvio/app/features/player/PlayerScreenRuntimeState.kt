@@ -127,6 +127,55 @@ internal class PlayerScreenRuntime(
     var activeInitialProgressFraction by mutableStateOf(initialProgressFraction)
     var shouldPlay by mutableStateOf(true)
     var resizeMode by mutableStateOf(playerSettingsUiState.resizeMode)
+    /** Manual "Vertical Video" mode: while true the player holds a portrait orientation lock. */
+    var manualVerticalVideoMode by mutableStateOf(false)
+    /** True while the current stream's reported dimensions are vertical (height > width). */
+    var autoDetectedVerticalVideo by mutableStateOf(false)
+        private set
+    /**
+     * Set when the user turns the Vertical Video button off while auto-detection is active.
+     * Suppresses auto portrait for the rest of the current playback item; cleared on item change.
+     */
+    var verticalVideoAutoOptOut by mutableStateOf(false)
+        private set
+    /** Portrait lock is held when the user forced it, or auto-detection fired and wasn't opted out. */
+    val isPortraitLocked: Boolean
+        get() = manualVerticalVideoMode || (autoDetectedVerticalVideo && !verticalVideoAutoOptOut)
+
+    /**
+     * Updates auto-detection from the engine's reported video size. Unknown (0) dimensions are
+     * ignored so a transient 0x0 snapshot mid-playback doesn't flip orientation back and forth;
+     * [resetAutoVerticalDetection] clears the state when the playback item changes.
+     */
+    fun updateAutoVerticalDetection(width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        autoDetectedVerticalVideo = height > width
+    }
+
+    fun resetAutoVerticalDetection() {
+        autoDetectedVerticalVideo = false
+        verticalVideoAutoOptOut = false
+    }
+
+    /** Explicit user opt-out: turns off both the manual lock and auto-detection for this item. */
+    fun disableVerticalVideoMode() {
+        manualVerticalVideoMode = false
+        verticalVideoAutoOptOut = autoDetectedVerticalVideo || verticalVideoAutoOptOut
+    }
+
+    /**
+     * Toggles portrait lock on/off. Turning off while auto-detected sets [verticalVideoAutoOptOut]
+     * so the current item stays unlocked even though the dimensions are still vertical.
+     */
+    fun toggleVerticalVideoMode() {
+        if (isPortraitLocked) {
+            disableVerticalVideoMode()
+        } else {
+            manualVerticalVideoMode = true
+            verticalVideoAutoOptOut = false
+        }
+    }
+
     var layoutSize by mutableStateOf(IntSize.Zero)
     var playbackSnapshot by mutableStateOf(PlayerPlaybackSnapshot())
     var playbackSnapshotKey by mutableStateOf<PlaybackKey?>(null)

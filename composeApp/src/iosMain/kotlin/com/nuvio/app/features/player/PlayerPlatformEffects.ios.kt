@@ -15,26 +15,51 @@ import platform.UIKit.UIScreen
 import platform.UIKit.UISlider
 
 private const val lockPlayerToLandscapeNotification = "NuvioPlayerLockLandscape"
+private const val lockPlayerToPortraitNotification = "NuvioPlayerLockPortrait"
 private const val unlockPlayerOrientationNotification = "NuvioPlayerUnlockOrientation"
 private var playerLandscapeLockCount = 0
+private var playerPortraitLockCount = 0
+
+private fun postPlayerOrientationNotification(name: String) {
+    NSNotificationCenter.defaultCenter.postNotificationName(name, null)
+}
 
 @Composable
 actual fun LockPlayerToLandscape() {
     DisposableEffect(Unit) {
         playerLandscapeLockCount += 1
-        if (playerLandscapeLockCount == 1) {
-            NSNotificationCenter.defaultCenter.postNotificationName(
-                lockPlayerToLandscapeNotification,
-                null,
-            )
+        // A manual portrait (vertical video) lock takes priority over landscape.
+        if (playerLandscapeLockCount == 1 && playerPortraitLockCount == 0) {
+            postPlayerOrientationNotification(lockPlayerToLandscapeNotification)
         }
 
         onDispose {
             playerLandscapeLockCount -= 1
-            if (playerLandscapeLockCount == 0) {
-                NSNotificationCenter.defaultCenter.postNotificationName(
-                    unlockPlayerOrientationNotification,
-                    null,
+            if (playerLandscapeLockCount == 0 && playerPortraitLockCount == 0) {
+                postPlayerOrientationNotification(unlockPlayerOrientationNotification)
+            }
+        }
+    }
+}
+
+@Composable
+actual fun LockPlayerToPortrait() {
+    DisposableEffect(Unit) {
+        playerPortraitLockCount += 1
+        if (playerPortraitLockCount == 1) {
+            postPlayerOrientationNotification(lockPlayerToPortraitNotification)
+        }
+
+        onDispose {
+            playerPortraitLockCount -= 1
+            if (playerPortraitLockCount == 0) {
+                // Fall back to the landscape lock if the player still holds one.
+                postPlayerOrientationNotification(
+                    if (playerLandscapeLockCount > 0) {
+                        lockPlayerToLandscapeNotification
+                    } else {
+                        unlockPlayerOrientationNotification
+                    },
                 )
             }
         }

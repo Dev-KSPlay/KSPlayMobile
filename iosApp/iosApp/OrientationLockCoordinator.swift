@@ -3,6 +3,7 @@ import UserNotifications
 import ComposeApp
 
 private let lockPlayerToLandscapeNotification = Notification.Name("NuvioPlayerLockLandscape")
+private let lockPlayerToPortraitNotification = Notification.Name("NuvioPlayerLockPortrait")
 private let unlockPlayerOrientationNotification = Notification.Name("NuvioPlayerUnlockOrientation")
 
 final class OrientationLockAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -61,6 +62,21 @@ final class OrientationLockAppDelegate: NSObject, UIApplicationDelegate, UNUserN
 final class OrientationLockCoordinator {
     static let shared = OrientationLockCoordinator()
 
+    /// Orientation modes the player can request via NotificationCenter.
+    private enum PlayerOrientationLock {
+        case none
+        case landscape
+        case portrait
+
+        var mask: UIInterfaceOrientationMask {
+            switch self {
+            case .none: return .allButUpsideDown
+            case .landscape: return .landscape
+            case .portrait: return .portrait
+            }
+        }
+    }
+
     private(set) var supportedOrientations: UIInterfaceOrientationMask = .allButUpsideDown
     private var observers: [NSObjectProtocol] = []
 
@@ -72,23 +88,28 @@ final class OrientationLockCoordinator {
         let center = NotificationCenter.default
         observers.append(
             center.addObserver(forName: lockPlayerToLandscapeNotification, object: nil, queue: .main) { [weak self] _ in
-                self?.setLandscapeLock(enabled: true)
+                self?.applyLock(.landscape)
+            }
+        )
+        observers.append(
+            center.addObserver(forName: lockPlayerToPortraitNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.applyLock(.portrait)
             }
         )
         observers.append(
             center.addObserver(forName: unlockPlayerOrientationNotification, object: nil, queue: .main) { [weak self] _ in
-                self?.setLandscapeLock(enabled: false)
+                self?.applyLock(.none)
             }
         )
     }
 
-    private func setLandscapeLock(enabled: Bool) {
-        let nextOrientations: UIInterfaceOrientationMask = enabled ? .landscape : .allButUpsideDown
+    private func applyLock(_ lock: PlayerOrientationLock) {
+        let nextOrientations = lock.mask
         supportedOrientations = nextOrientations
-        requestOrientationUpdate(for: nextOrientations, forceRotate: enabled)
+        requestOrientationUpdate(for: nextOrientations, lock: lock)
     }
 
-    private func requestOrientationUpdate(for mask: UIInterfaceOrientationMask, forceRotate: Bool) {
+    private func requestOrientationUpdate(for mask: UIInterfaceOrientationMask, lock: PlayerOrientationLock) {
         if #available(iOS 16.0, *) {
             let preferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: mask)
             UIApplication.shared.connectedScenes
@@ -105,10 +126,15 @@ final class OrientationLockCoordinator {
                     window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
                 }
         } else {
-            if forceRotate {
+            switch lock {
+            case .landscape:
                 UIDevice.current.setValue(preferredLandscapeOrientation.rawValue, forKey: "orientation")
-            } else if UIDevice.current.orientation.isPortrait {
+            case .portrait:
                 UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+            case .none:
+                if UIDevice.current.orientation.isPortrait {
+                    UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+                }
             }
             UIViewController.attemptRotationToDeviceOrientation()
         }

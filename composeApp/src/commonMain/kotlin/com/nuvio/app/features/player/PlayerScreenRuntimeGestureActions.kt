@@ -231,6 +231,15 @@ internal fun PlayerScreenRuntime.cycleResizeMode() {
     controlsVisible = true
 }
 
+/**
+ * Toggles manual vertical video mode. The orientation lock itself is applied
+ * declaratively by [LockPlayerToPortrait] in RenderPlayerRuntimeUi while the flag is set.
+ */
+internal fun PlayerScreenRuntime.toggleVerticalVideoMode() {
+    manualVerticalVideoMode = !manualVerticalVideoMode
+    controlsVisible = true
+}
+
 internal fun PlayerScreenRuntime.cyclePlaybackSpeed() {
     val speeds = listOf(1f, 1.25f, 1.5f, 2f)
     val current = playbackSnapshot.playbackSpeed

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -113,6 +114,22 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     }
     val gestureCallbacks = rememberSurfaceGestureCallbacks()
     val playbackGesturesEnabled = initialLoadCompleted && errorMessage == null
+
+    // Auto-detect vertical video: start each playback item un-detected (and clear any opt-out),
+    // then follow the dimensions reported by the engine for the *current* item only.
+    LaunchedEffect(activePlaybackKey) {
+        resetAutoVerticalDetection()
+    }
+    // Fire auto-detection whenever dimensions are reported for the current playback item.
+    LaunchedEffect(playbackSnapshot.videoWidth, playbackSnapshot.videoHeight) {
+        updateAutoVerticalDetection(playbackSnapshot.videoWidth, playbackSnapshot.videoHeight)
+    }
+
+    // Vertical video mode (auto-detected or manually forced) overrides the app-level landscape
+    // lock (MainAppContent) while active; leaving the composition restores the previous lock.
+    if (isPortraitLocked && !isInPip) {
+        LockPlayerToPortrait()
+    }
 
     Box(
         modifier = Modifier
@@ -307,6 +324,9 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
             onSeekForward = { seekBy(10_000L) },
             onResizeModeClick = { cycleResizeMode() },
             onSpeedClick = { cyclePlaybackSpeed() },
+            isVerticalVideoMode = isPortraitLocked,
+            isVerticalVideoAuto = isPortraitLocked && !manualVerticalVideoMode,
+            onVerticalVideoClick = { toggleVerticalVideoMode() },
             onSubtitleClick = {
                 refreshTracks()
                 showSubtitleModal = true
