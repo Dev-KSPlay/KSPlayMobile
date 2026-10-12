@@ -710,6 +710,10 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
             cancelStillWatchingPrompt()
         }
     }
+
+    LaunchedEffect(stillWatchingCountdown != null, playbackSnapshot.isPlaying) {
+        onStillWatchingPlaybackChanged(playbackSnapshot.isPlaying)
+    }
 }
 
 private fun PlayerScreenRuntime.buildNowPlayingInfo(): PlayerNowPlayingInfo {
