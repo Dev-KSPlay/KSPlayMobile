@@ -9,7 +9,6 @@ import com.nuvio.app.features.addons.AddonManifest
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.ManagedAddon
 import com.nuvio.app.features.addons.supportsResource
-import com.nuvio.app.features.addons.externalAddonType
 import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.downloads.DownloadsRepository
 import com.nuvio.app.features.plugins.PluginRepository
@@ -43,10 +42,7 @@ internal class PlaybackAvailability(
         parentMetaId: String,
         seasonNumber: Int? = null,
         episodeNumber: Int? = null,
-    ): Boolean = canStream(
-        externalAddonType(type, seasonNumber, episodeNumber),
-        videoId,
-    ) || DownloadsRepository.findPlayableDownload(
+    ): Boolean = canStream(type, videoId) || DownloadsRepository.findPlayableDownload(
         parentMetaId = parentMetaId,
         seasonNumber = seasonNumber,
         episodeNumber = episodeNumber,

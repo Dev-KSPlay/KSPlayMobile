@@ -28,7 +28,7 @@ data class AddonResource(
 fun AddonManifest.supportsResource(name: String, type: String, id: String): Boolean =
     resources.any { resource ->
         resource.name == name &&
-            resource.types.any { it.trim().equals(type.trim(), ignoreCase = true) } &&
+            resource.types.contains(type) &&
             (resource.idPrefixes.isEmpty() || resource.idPrefixes.any { id.startsWith(it) })
     }
 
