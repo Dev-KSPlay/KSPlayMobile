@@ -708,7 +708,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
                 ) -> enterStillWatchingPrompt()
                 autoPlayNextEpisode && nextEpisodeHasAired -> playNextEpisode(automatic = true)
             }
-        } else if (!shouldShow) {
+        } else if (!shouldShow && (stillWatchingCountdown == null || nextEpisodeInfo == null)) {
             showNextEpisodeCard = false
             cancelStillWatchingPrompt()
         }
