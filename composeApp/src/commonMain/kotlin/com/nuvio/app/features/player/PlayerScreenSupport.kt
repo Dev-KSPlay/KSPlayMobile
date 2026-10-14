@@ -7,6 +7,7 @@ import com.nuvio.app.features.streams.StreamItem
 internal const val PlaybackProgressPersistIntervalMs = 60_000L
 internal const val PlayerDoubleTapSeekStepMs = 10_000L
 internal const val PlayerDoubleTapSeekResetDelayMs = 800L
+internal const val PlayerSeekIndicatorHoldMs = 1_000L
 internal const val PlayerLockedOverlayDurationMs = 2_000L
 internal const val PlayerLeftGestureBoundary = 0.4f
 internal const val PlayerRightGestureBoundary = 0.6f
@@ -80,6 +81,21 @@ internal data class PlayerAccumulatedSeekState(
     val direction: PlayerSeekDirection,
     val baselinePositionMs: Long,
     val amountMs: Long,
+) {
+    /** Position this accumulated seek lands on, clamped to the media bounds. */
+    fun targetPositionMs(durationMs: Long): Long {
+        val target = when (direction) {
+            PlayerSeekDirection.Forward -> baselinePositionMs + amountMs
+            PlayerSeekDirection.Backward -> baselinePositionMs - amountMs
+        }.coerceAtLeast(0L)
+        return if (durationMs > 0L) target.coerceAtMost(durationMs) else target
+    }
+}
+
+/** Data for the TV-style bottom seek bar: where the pending seek lands and the media length. */
+internal data class PlayerSeekProgress(
+    val positionMs: Long,
+    val durationMs: Long,
 )
 
 internal data class PendingPlayerP2pSwitch(

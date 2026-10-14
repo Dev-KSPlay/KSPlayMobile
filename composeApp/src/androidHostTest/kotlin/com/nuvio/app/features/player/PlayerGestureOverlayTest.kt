@@ -84,6 +84,8 @@ class PlayerGestureOverlayTest {
                         useLegacyLayout = useLegacyLayout.value,
                         horizontalSafePadding = 0.dp,
                         horizontalPadding = 0.dp,
+                        seekIndicator = runtime.accumulatedSeekState,
+                        seekProgress = runtime.currentSeekProgress(),
                     )
                 }
             }
@@ -217,13 +219,162 @@ class PlayerGestureOverlayTest {
     fun doubleTapSeekAmountIsShown() {
         setPlayerContent()
         compose.runOnIdle { runtime.handleDoubleTapSeek(PlayerSeekDirection.Forward) }
-        compose.onNodeWithText("+10s").assertIsDisplayed()
+        compose.onNodeWithText("+ 10").assertIsDisplayed()
 
         compose.runOnIdle { runtime.handleDoubleTapSeek(PlayerSeekDirection.Forward) }
-        compose.onNodeWithText("+20s").assertIsDisplayed()
+        compose.onNodeWithText("+ 20").assertIsDisplayed()
 
         compose.runOnIdle { runtime.handleDoubleTapSeek(PlayerSeekDirection.Backward) }
-        compose.onNodeWithText("-10s").assertIsDisplayed()
+        compose.onNodeWithText("\u2212 10").assertIsDisplayed()
+    }
+
+    @Test
+    fun doubleTapSeekIndicatorSitsOnTheMatchingSideAndIsVerticallyCentered() {
+        setPlayerContent()
+        compose.runOnIdle { runtime.handleDoubleTapSeek(PlayerSeekDirection.Forward) }
+        val surface = compose.onNodeWithTag("surface").getUnclippedBoundsInRoot()
+        val surfaceCenterX = (surface.left + surface.right) / 2
+        val surfaceCenterY = (surface.top + surface.bottom) / 2
+
+        val forward = compose.onNodeWithText("+ 10").assertIsDisplayed().getUnclippedBoundsInRoot()
+        assertTrue(forward.left > surfaceCenterX, "forward is shown on the right")
+        assertTrue(abs((((forward.top + forward.bottom) / 2) - surfaceCenterY).value) < 4f, "forward is vertically centered")
+        compose.onNodeWithText("+10s").assertDoesNotExist()
+
+        compose.runOnIdle { runtime.handleDoubleTapSeek(PlayerSeekDirection.Backward) }
+        val backward = compose.onNodeWithText("\u2212 10").assertIsDisplayed().getUnclippedBoundsInRoot()
+        assertTrue(backward.right < surfaceCenterX, "backward is shown on the left")
+        assertTrue(abs((((backward.top + backward.bottom) / 2) - surfaceCenterY).value) < 4f, "backward is vertically centered")
+        compose.onNodeWithText("-10s").assertDoesNotExist()
+    }
+
+    @Test
+    fun doubleTapSeekShowsTheBottomProgressBarWithCurrentAndTotalTime() {
+        setPlayerContent()
+        compose.runOnIdle { runtime.handleDoubleTapSeek(PlayerSeekDirection.Forward) }
+        val surface = compose.onNodeWithTag("surface").getUnclippedBoundsInRoot()
+        val bar = compose.onNodeWithText("01:10 / 09:56").assertIsDisplayed().getUnclippedBoundsInRoot()
+        assertTrue(bar.top > surface.top + (surface.bottom - surface.top) * 2 / 3, "the bar sits at the bottom")
+        assertTrue(bar.left > (surface.left + surface.right) / 2, "the time is right-aligned")
+
+        compose.runOnIdle { runtime.handleDoubleTapSeek(PlayerSeekDirection.Forward) }
+        compose.onNodeWithText("01:20 / 09:56").assertIsDisplayed()
+
+        compose.runOnIdle { runtime.handleDoubleTapSeek(PlayerSeekDirection.Backward) }
+        compose.onNodeWithText("00:50 / 09:56").assertIsDisplayed()
+    }
+
+    @Test
+    fun bottomProgressBarIsHiddenWhileTheMainControlsAreVisible() {
+        setPlayerContent()
+        runtime.controlsVisible = true
+        compose.runOnIdle { runtime.handleDoubleTapSeek(PlayerSeekDirection.Forward) }
+
+        compose.onNodeWithText("+ 10").assertIsDisplayed()
+        compose.onNodeWithText("01:10 / 09:56").assertDoesNotExist()
+    }
+
+    @Test
+    fun swipeSeekMovesTheBottomProgressBarAndHidesOnRelease() {
+        setPlayerContent()
+        val surface = compose.onNodeWithTag("surface")
+        surface.performTouchInput {
+            down(center)
+            moveBy(Offset(width / 12f, 0f))
+        }
+        compose.onNodeWithText("01:05 / 09:56").assertIsDisplayed()
+
+        surface.performTouchInput { up() }
+        compose.runOnIdle { assertNull(runtime.horizontalSeekPreviewPositionMs) }
+        compose.onNodeWithText("01:05 / 09:56").assertDoesNotExist()
+    }
+
+    @Test
+    fun seekProgressFollowsTheLandingPositionAndRespectsVisibilityRules() {
+        setPlayerContent()
+        compose.runOnIdle {
+            assertNull(runtime.currentSeekProgress(), "nothing to show before any seek")
+
+            runtime.playbackSnapshot = runtime.playbackSnapshot.copy(positionMs = 590_000L)
+            runtime.handleDoubleTapSeek(PlayerSeekDirection.Forward)
+            assertEquals(PlayerSeekProgress(596_000L, 596_000L), runtime.currentSeekProgress(), "clamped to the end")
+
+            runtime.controlsVisible = true
+            assertNull(runtime.currentSeekProgress(), "the main controls show the position instead")
+            runtime.controlsVisible = false
+
+            runtime.playerControlsLocked = true
+            assertNull(runtime.currentSeekProgress())
+            runtime.playerControlsLocked = false
+
+            runtime.playbackSnapshot = runtime.playbackSnapshot.copy(durationMs = 0L)
+            assertNull(runtime.currentSeekProgress(), "unknown duration")
+        }
+    }
+
+    @Test
+    fun seekButtonsAlsoUseTheSideIndicator() {
+        setPlayerContent()
+        compose.runOnIdle { runtime.seekBy(10_000L) }
+        compose.onNodeWithText("+ 10").assertIsDisplayed()
+
+        compose.runOnIdle { runtime.seekBy(10_000L) }
+        compose.onNodeWithText("+ 20").assertIsDisplayed()
+        compose.onNodeWithText("+10s").assertDoesNotExist()
+    }
+
+    @Test
+    fun legacyLayoutKeepsTheTopSeekText() {
+        runtime.playerSettingsUiState = runtime.playerSettingsUiState.copy(useLegacyPlayerLayout = true)
+        useLegacyLayout.value = true
+        setPlayerContent()
+        compose.runOnIdle { runtime.handleDoubleTapSeek(PlayerSeekDirection.Forward) }
+
+        compose.onNodeWithText("+10s").assertIsDisplayed()
+        compose.onNodeWithText("+ 10").assertDoesNotExist()
+        compose.onNodeWithText("01:10 / 09:56").assertDoesNotExist()
+        compose.runOnIdle { assertNull(runtime.seekTapDirection(Offset(470f, 135f))) }
+    }
+
+    @Test
+    fun sideTapsContinueSeekingOnlyWhileTheIndicatorIsVisible() {
+        setPlayerContent()
+        runtime.layoutSize = IntSize(480, 270)
+        val left = Offset(40f, 135f)
+        val right = Offset(440f, 135f)
+        val center = Offset(240f, 135f)
+
+        compose.runOnIdle {
+            assertNull(runtime.seekTapDirection(right), "taps behave normally before any seek")
+            runtime.handleDoubleTapSeek(PlayerSeekDirection.Forward)
+            assertEquals(PlayerSeekDirection.Forward, runtime.seekTapDirection(right))
+            assertEquals(PlayerSeekDirection.Backward, runtime.seekTapDirection(left))
+            assertNull(runtime.seekTapDirection(center), "the center zone still toggles the controls")
+
+            runtime.playerControlsLocked = true
+            assertNull(runtime.seekTapDirection(right))
+            runtime.playerControlsLocked = false
+
+            runtime.accumulatedSeekState = null
+            assertNull(runtime.seekTapDirection(right), "taps behave normally once the indicator is gone")
+        }
+    }
+
+    @Test
+    fun sideTapsAddTenSecondsInTheirDirection() {
+        setPlayerContent()
+        runtime.layoutSize = IntSize(480, 270)
+        compose.runOnIdle {
+            runtime.handleDoubleTapSeek(PlayerSeekDirection.Forward)
+            runtime.seekTapDirection(Offset(440f, 135f))?.let(runtime::handleDoubleTapSeek)
+            runtime.seekTapDirection(Offset(440f, 135f))?.let(runtime::handleDoubleTapSeek)
+            assertEquals(listOf(70_000L, 80_000L, 90_000L), seeks)
+
+            // A tap on the other side flips direction and restarts the count from the current position.
+            runtime.seekTapDirection(Offset(40f, 135f))?.let(runtime::handleDoubleTapSeek)
+            assertEquals(50_000L, seeks.last())
+        }
+        compose.onNodeWithText("\u2212 10").assertIsDisplayed()
     }
 
     @Test

@@ -10,6 +10,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.abs
 import kotlin.math.roundToLong
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeSource
 
 internal fun Modifier.playerSurfaceTapGestures(
     layoutSize: IntSize,
@@ -20,16 +22,31 @@ internal fun Modifier.playerSurfaceTapGestures(
     activateHoldToSpeedState: State<() -> Unit>,
     deactivateHoldToSpeedState: State<() -> Unit>,
     revealLockedOverlayState: State<() -> Unit>,
+    seekTapEnabledAtState: State<(Offset) -> Boolean>? = null,
+    onSeekTapState: State<(Offset) -> Unit>? = null,
 ): Modifier =
     pointerInput(layoutSize, playbackGesturesEnabled) {
+        // While the seek indicator is visible, a single tap on a side zone keeps seeking. It must
+        // react on release (not after the double-tap timeout), and the tap/double-tap callbacks of
+        // that same press are then skipped so the tap is not counted twice.
+        var pressIsSeekTap = false
         detectTapGestures(
-            onPress = {
-                tryAwaitRelease()
+            onPress = { offset ->
+                val seekTap = playbackGesturesEnabled &&
+                    seekTapEnabledAtState?.value?.invoke(offset) == true
+                pressIsSeekTap = seekTap
+                val pressedAt = TimeSource.Monotonic.markNow()
+                val released = tryAwaitRelease()
                 deactivateHoldToSpeedState.value()
+                if (seekTap && released &&
+                    pressedAt.elapsedNow() < viewConfiguration.longPressTimeoutMillis.milliseconds
+                ) {
+                    onSeekTapState?.value?.invoke(offset)
+                }
             },
-            onTap = { offset -> onSurfaceTap.value(offset) },
+            onTap = { offset -> if (!pressIsSeekTap) onSurfaceTap.value(offset) },
             onDoubleTap = if (playbackGesturesEnabled) {
-                { offset -> onSurfaceDoubleTap.value(offset) }
+                { offset -> if (!pressIsSeekTap) onSurfaceDoubleTap.value(offset) }
             } else null,
             onLongPress = if (playbackGesturesEnabled) {
                 {

@@ -31,8 +31,10 @@ class PlayerSurfaceGesturesTest {
     val compose = createComposeRule()
 
     private val playbackReady = mutableStateOf(false)
+    private val seekTapMode = mutableStateOf(false)
     private var taps = 0
     private var doubleTaps = 0
+    private var seekTaps = 0
     private var speedBoosts = 0
     private var seekPreviews = 0
     private var seekCommits = 0
@@ -66,6 +68,8 @@ class PlayerSurfaceGesturesTest {
                         activateHoldToSpeedState = rememberUpdatedState { speedBoosts++ },
                         deactivateHoldToSpeedState = noop,
                         revealLockedOverlayState = noop,
+                        seekTapEnabledAtState = rememberUpdatedState { _: Offset -> seekTapMode.value },
+                        onSeekTapState = rememberUpdatedState { _: Offset -> seekTaps++ },
                     )
                     .playerSurfaceDragGestures(
                         gestureController = gestureController,
@@ -124,6 +128,75 @@ class PlayerSurfaceGesturesTest {
             assertTrue(seekPreviews > 0)
             assertEquals(1, seekCommits)
             assertTrue(sideAdjustments > 0)
+        }
+    }
+
+    @Test
+    fun whileSeekingASingleTapSeeksImmediatelyAndIsNotAlsoATap() {
+        playbackReady.value = true
+        seekTapMode.value = true
+        setContent()
+        compose.onNodeWithTag("surface").performTouchInput { click(Offset(width * 0.85f, centerY)) }
+        // Reacts on release, without waiting for the double-tap timeout.
+        compose.runOnIdle { assertEquals(1, seekTaps) }
+        // The delayed tap callback of the same press is skipped.
+        compose.mainClock.advanceTimeBy(500)
+        compose.runOnIdle {
+            assertEquals(1, seekTaps)
+            assertEquals(0, taps)
+            assertEquals(0, doubleTaps)
+        }
+    }
+
+    @Test
+    fun whileSeekingQuickRepeatedTapsEachAddOneSeek() {
+        playbackReady.value = true
+        seekTapMode.value = true
+        setContent()
+        compose.onNodeWithTag("surface").performTouchInput { doubleClick(Offset(width * 0.15f, centerY)) }
+        compose.mainClock.advanceTimeBy(500)
+        compose.runOnIdle {
+            assertEquals(2, seekTaps)
+            assertEquals(0, taps)
+            assertEquals(0, doubleTaps)
+        }
+    }
+
+    @Test
+    fun withoutAnActiveSeekASingleTapStillTogglesControls() {
+        playbackReady.value = true
+        setContent()
+        compose.onNodeWithTag("surface").performTouchInput { click(Offset(width * 0.85f, centerY)) }
+        compose.mainClock.advanceTimeBy(500)
+        compose.runOnIdle {
+            assertEquals(0, seekTaps)
+            assertEquals(1, taps)
+            assertEquals(0, doubleTaps)
+        }
+    }
+
+    @Test
+    fun withoutAnActiveSeekADoubleTapStillStartsSeeking() {
+        playbackReady.value = true
+        setContent()
+        compose.onNodeWithTag("surface").performTouchInput { doubleClick(Offset(width * 0.85f, centerY)) }
+        compose.mainClock.advanceTimeBy(500)
+        compose.runOnIdle {
+            assertEquals(0, seekTaps)
+            assertEquals(0, taps)
+            assertEquals(1, doubleTaps)
+        }
+    }
+
+    @Test
+    fun holdingWhileSeekingStillBoostsSpeedInsteadOfSeeking() {
+        playbackReady.value = true
+        seekTapMode.value = true
+        setContent()
+        compose.onNodeWithTag("surface").performTouchInput { longClick(Offset(width * 0.85f, centerY)) }
+        compose.runOnIdle {
+            assertEquals(0, seekTaps)
+            assertEquals(1, speedBoosts)
         }
     }
 

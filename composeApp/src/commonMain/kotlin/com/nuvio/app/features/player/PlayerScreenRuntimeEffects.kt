@@ -86,6 +86,7 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         isScrubbingTimeline = false
         scrubbingPositionMs = null
         liveGestureFeedback = null
+        horizontalSeekPreviewPositionMs = null
         renderedGestureFeedback = null
         lockedOverlayVisible = false
         credentialRefreshJob?.cancel()

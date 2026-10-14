@@ -60,6 +60,8 @@ internal fun PlayerGestureOverlay(
     useLegacyLayout: Boolean,
     horizontalSafePadding: Dp,
     horizontalPadding: Dp,
+    seekIndicator: PlayerAccumulatedSeekState? = null,
+    seekProgress: PlayerSeekProgress? = null,
 ) {
     AnimatedVisibility(
         visible = currentFeedback != null,
@@ -88,6 +90,18 @@ internal fun PlayerGestureOverlay(
                 }
             }
         }
+    }
+    if (!useLegacyLayout) {
+        PlayerSeekProgressOverlay(
+            progress = seekProgress,
+            horizontalSafePadding = horizontalSafePadding,
+            horizontalPadding = horizontalPadding,
+        )
+        PlayerSeekIndicator(
+            state = seekIndicator,
+            horizontalSafePadding = horizontalSafePadding,
+            horizontalPadding = horizontalPadding,
+        )
     }
 }
 

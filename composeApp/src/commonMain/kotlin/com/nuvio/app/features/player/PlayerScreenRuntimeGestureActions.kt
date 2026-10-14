@@ -15,6 +15,8 @@ import kotlin.math.roundToInt
 internal data class PlayerSurfaceGestureCallbacks(
     val onSurfaceTap: State<(Offset) -> Unit>,
     val onSurfaceDoubleTap: State<(Offset) -> Unit>,
+    val seekTapEnabledAt: State<(Offset) -> Boolean>,
+    val onSeekTap: State<(Offset) -> Unit>,
     val activateHoldToSpeed: State<() -> Unit>,
     val deactivateHoldToSpeed: State<() -> Unit>,
     val showHorizontalSeekPreview: State<(Long, Long) -> Unit>,
@@ -45,6 +47,7 @@ internal fun PlayerScreenRuntime.showGestureMessage(message: String) {
 
 internal fun PlayerScreenRuntime.clearLiveGestureFeedback() {
     liveGestureFeedback = null
+    horizontalSeekPreviewPositionMs = null
 }
 
 internal fun PlayerScreenRuntime.revealLockedOverlay() {
@@ -62,6 +65,7 @@ internal fun PlayerScreenRuntime.lockPlayerControls() {
     gestureMessageJob?.cancel()
     gestureFeedback = null
     liveGestureFeedback = null
+    horizontalSeekPreviewPositionMs = null
     renderedGestureFeedback = null
     showAudioModal = false
     showSubtitleModal = false
@@ -102,6 +106,7 @@ internal fun PlayerScreenRuntime.showSeekFeedback(direction: PlayerSeekDirection
 internal fun PlayerScreenRuntime.showHorizontalSeekPreview(previewPositionMs: Long, baselinePositionMs: Long) {
     val deltaMs = previewPositionMs - baselinePositionMs
     val direction = if (deltaMs < 0L) PlayerSeekDirection.Backward else PlayerSeekDirection.Forward
+    horizontalSeekPreviewPositionMs = previewPositionMs
     liveGestureFeedback = GestureFeedbackState(
         message = formatPlaybackTime(previewPositionMs),
         icon = if (direction == PlayerSeekDirection.Forward) {
@@ -175,45 +180,104 @@ internal fun PlayerScreenRuntime.seekBy(offsetMs: Long) {
     scheduleProgressSyncAfterSeek()
     controlsVisible = true
     when {
-        offsetMs > 0L -> showSeekFeedback(PlayerSeekDirection.Forward, offsetMs)
-        offsetMs < 0L -> showSeekFeedback(PlayerSeekDirection.Backward, abs(offsetMs))
+        offsetMs > 0L -> showSeekStepFeedback(PlayerSeekDirection.Forward, offsetMs, fromMs)
+        offsetMs < 0L -> showSeekStepFeedback(PlayerSeekDirection.Backward, abs(offsetMs), fromMs)
+    }
+}
+
+/**
+ * Seek feedback for a single step. Legacy layout keeps the top-center text; the modern layout
+ * drives the YouTube-style side indicator (`+ N` / `- N`) from [PlayerScreenRuntime.accumulatedSeekState].
+ */
+private fun PlayerScreenRuntime.showSeekStepFeedback(
+    direction: PlayerSeekDirection,
+    stepMs: Long,
+    fromPositionMs: Long,
+) {
+    if (playerSettingsUiState.useLegacyPlayerLayout) {
+        showSeekFeedback(direction, stepMs)
+    } else {
+        advanceAccumulatedSeek(direction, stepMs, fromPositionMs.coerceAtLeast(0L))
+        scheduleAccumulatedSeekReset()
+    }
+}
+
+private fun PlayerScreenRuntime.advanceAccumulatedSeek(
+    direction: PlayerSeekDirection,
+    stepMs: Long,
+    baselinePositionMs: Long = playbackSnapshot.positionMs.coerceAtLeast(0L),
+): PlayerAccumulatedSeekState {
+    val currentSeekState = accumulatedSeekState
+    val nextState = if (currentSeekState?.direction == direction) {
+        currentSeekState.copy(amountMs = currentSeekState.amountMs + stepMs)
+    } else {
+        PlayerAccumulatedSeekState(
+            direction = direction,
+            baselinePositionMs = baselinePositionMs,
+            amountMs = stepMs,
+        )
+    }
+    accumulatedSeekState = nextState
+    return nextState
+}
+
+private fun PlayerScreenRuntime.scheduleAccumulatedSeekReset() {
+    val resetDelayMs = if (playerSettingsUiState.useLegacyPlayerLayout) {
+        PlayerDoubleTapSeekResetDelayMs
+    } else {
+        PlayerSeekIndicatorHoldMs
+    }
+    accumulatedSeekResetJob?.cancel()
+    accumulatedSeekResetJob = scope.launch {
+        delay(resetDelayMs)
+        accumulatedSeekState = null
+    }
+}
+
+/**
+ * TV-style bottom seek bar (modern layout): where the pending seek lands, shown only while the main
+ * controls are hidden. Follows a horizontal swipe preview, or the double-tap / tap / button seek
+ * that is currently on screen. Null when nothing should be shown.
+ */
+internal fun PlayerScreenRuntime.currentSeekProgress(): PlayerSeekProgress? {
+    if (playerControlsLocked || controlsVisible || pausedOverlayVisible || errorMessage != null) return null
+    val durationMs = playbackSnapshot.durationMs.takeIf { it > 0L } ?: return null
+    val positionMs = horizontalSeekPreviewPositionMs
+        ?: accumulatedSeekState?.targetPositionMs(durationMs)
+        ?: return null
+    return PlayerSeekProgress(
+        positionMs = positionMs.coerceIn(0L, durationMs),
+        durationMs = durationMs,
+    )
+}
+
+/**
+ * While the seek indicator is visible (modern layout), a single tap on the left/right zone keeps
+ * seeking in that direction, like YouTube. Returns null when taps should behave normally.
+ */
+internal fun PlayerScreenRuntime.seekTapDirection(offset: Offset): PlayerSeekDirection? {
+    if (playerSettingsUiState.useLegacyPlayerLayout) return null
+    if (playerControlsLocked || !playerSettingsUiState.touchGesturesEnabled) return null
+    if (accumulatedSeekState == null) return null
+    return when {
+        offset.x < layoutSize.width * PlayerLeftGestureBoundary -> PlayerSeekDirection.Backward
+        offset.x > layoutSize.width * PlayerRightGestureBoundary -> PlayerSeekDirection.Forward
+        else -> null
     }
 }
 
 internal fun PlayerScreenRuntime.handleDoubleTapSeek(direction: PlayerSeekDirection) {
     val currentPositionMs = playbackSnapshot.positionMs.coerceAtLeast(0L)
-    val currentSeekState = accumulatedSeekState
-    val nextState = if (currentSeekState?.direction == direction) {
-        currentSeekState.copy(amountMs = currentSeekState.amountMs + PlayerDoubleTapSeekStepMs)
-    } else {
-        PlayerAccumulatedSeekState(
-            direction = direction,
-            baselinePositionMs = currentPositionMs,
-            amountMs = PlayerDoubleTapSeekStepMs,
-        )
-    }
-    accumulatedSeekState = nextState
+    val nextState = advanceAccumulatedSeek(direction, PlayerDoubleTapSeekStepMs)
 
-    val maxDurationMs = playbackSnapshot.durationMs.takeIf { it > 0L }
-    val targetPositionMs = when (direction) {
-        PlayerSeekDirection.Backward -> {
-            (nextState.baselinePositionMs - nextState.amountMs).coerceAtLeast(0L)
-        }
-        PlayerSeekDirection.Forward -> {
-            val unclamped = nextState.baselinePositionMs + nextState.amountMs
-            maxDurationMs?.let { unclamped.coerceAtMost(it) } ?: unclamped
-        }
-    }
+    val targetPositionMs = nextState.targetPositionMs(playbackSnapshot.durationMs)
     lastManualSkipSeekPositions = currentPositionMs to targetPositionMs
     playerController?.seekTo(targetPositionMs)
     scheduleProgressSyncAfterSeek()
-    showSeekFeedback(direction, nextState.amountMs)
-
-    accumulatedSeekResetJob?.cancel()
-    accumulatedSeekResetJob = scope.launch {
-        delay(PlayerDoubleTapSeekResetDelayMs)
-        accumulatedSeekState = null
+    if (playerSettingsUiState.useLegacyPlayerLayout) {
+        showSeekFeedback(direction, nextState.amountMs)
     }
+    scheduleAccumulatedSeekReset()
 }
 
 internal fun PlayerScreenRuntime.cycleResizeMode() {
@@ -301,9 +365,16 @@ internal fun PlayerScreenRuntime.rememberSurfaceGestureCallbacks(): PlayerSurfac
             else -> controlsVisible = !controlsVisible
         }
     }
+    val seekTapEnabledAt = rememberUpdatedState { offset: Offset -> seekTapDirection(offset) != null }
+    val onSeekTap = rememberUpdatedState { offset: Offset ->
+        val direction = seekTapDirection(offset)
+        if (direction != null) handleDoubleTapSeek(direction)
+    }
     return PlayerSurfaceGestureCallbacks(
         onSurfaceTap = onSurfaceTap,
         onSurfaceDoubleTap = onSurfaceDoubleTap,
+        seekTapEnabledAt = seekTapEnabledAt,
+        onSeekTap = onSeekTap,
         activateHoldToSpeed = rememberUpdatedState(::activateHoldToSpeed),
         deactivateHoldToSpeed = rememberUpdatedState(::deactivateHoldToSpeed),
         showHorizontalSeekPreview = rememberUpdatedState(::showHorizontalSeekPreview),

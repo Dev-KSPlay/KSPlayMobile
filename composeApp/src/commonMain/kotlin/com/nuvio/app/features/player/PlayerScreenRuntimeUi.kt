@@ -129,6 +129,8 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                 activateHoldToSpeedState = gestureCallbacks.activateHoldToSpeed,
                 deactivateHoldToSpeedState = gestureCallbacks.deactivateHoldToSpeed,
                 revealLockedOverlayState = gestureCallbacks.revealLockedOverlay,
+                seekTapEnabledAtState = gestureCallbacks.seekTapEnabledAt,
+                onSeekTapState = gestureCallbacks.onSeekTap,
             )
             .playerSurfaceDragGestures(
                 gestureController = gestureController,
@@ -475,6 +477,8 @@ private fun BoxScope.RenderPlaybackOverlays(
                 flushWatchProgress()
                 args.onBack()
             },
+            seekIndicator = accumulatedSeekState.takeIf { !playerControlsLocked },
+            seekProgress = currentSeekProgress(),
         )
     }
 }

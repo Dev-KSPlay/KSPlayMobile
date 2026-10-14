@@ -61,6 +61,8 @@ internal fun BoxScope.PlayerPlaybackOverlays(
     onDismissNextEpisode: () -> Unit,
     errorMessage: String?,
     onDismissError: () -> Unit,
+    seekIndicator: PlayerAccumulatedSeekState? = null,
+    seekProgress: PlayerSeekProgress? = null,
 ) {
     AnimatedVisibility(
         visible = playerControlsLocked && lockedOverlayVisible,
@@ -111,6 +113,8 @@ internal fun BoxScope.PlayerPlaybackOverlays(
         useLegacyLayout = useLegacyLayout,
         horizontalSafePadding = horizontalSafePadding,
         horizontalPadding = metrics.horizontalPadding,
+        seekIndicator = seekIndicator,
+        seekProgress = seekProgress,
     )
 
     if (!playerControlsLocked) {
