@@ -56,6 +56,9 @@ jobs:
             echo "NUVIO_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
           } > local.properties
 
+      - name: Run Android host unit tests
+        run: ./gradlew :composeApp:testAndroidHostTest --no-daemon --max-workers=2 --stacktrace
+
       - name: Build release APKs
         run: ./gradlew :androidApp:assembleFullRelease --no-daemon --max-workers=2 --stacktrace
 
