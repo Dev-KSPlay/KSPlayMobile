@@ -1,6 +1,8 @@
 package com.nuvio.app.features.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -118,6 +120,15 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val playbackGesturesEnabled = initialLoadCompleted && errorMessage == null
 
     BindAutoSyncRuntimeEffects() // AutoSync hook
+
+    val subtitleLift = subtitleLiftFraction(
+        subtitleControlsClearance,
+        if (playerControlsLocked) 0f else subtitleSkipClearance,
+        if (playerControlsLocked || !isSeries) 0f else subtitleNextEpisodeClearance,
+    )
+    LaunchedEffect(playerController, subtitleLift) {
+        playerController?.setSubtitleBottomLift(subtitleLift)
+    }
 
     Box(
         modifier = Modifier
@@ -303,6 +314,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
             } else null,
             onInteraction = { controlsActivityTick += 1 },
             showPlaybackControls = controlsVisible,
+            onSubtitleClearanceChanged = { subtitleControlsClearance = it },
             onLockToggle = {
                 if (playerControlsLocked) unlockPlayerControls() else lockPlayerControls()
             },
@@ -465,6 +477,9 @@ private fun BoxScope.RenderPlaybackOverlays(
         skipsToPostCredits = activeSkipInterval?.internalSkipAction(skipIntervals, playbackSnapshot.durationMs)?.skipsToPostCredits == true,
         skipIntervalDismissed = skipIntervalDismissed,
         controlsVisible = controlsVisible,
+        subtitleGapPx = with(LocalDensity.current) { PlayerSubtitleLiftGap.toPx() },
+        onSkipClearanceChanged = { subtitleSkipClearance = it },
+        onNextEpisodeClearanceChanged = { subtitleNextEpisodeClearance = it },
         onSkipInterval = { interval ->
             interval.internalSkipAction(skipIntervals, playbackSnapshot.durationMs)?.let { action ->
                 val durationMs = playbackSnapshot.durationMs

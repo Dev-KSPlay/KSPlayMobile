@@ -61,6 +61,9 @@ internal fun BoxScope.PlayerPlaybackOverlays(
     onDismissNextEpisode: () -> Unit,
     errorMessage: String?,
     onDismissError: () -> Unit,
+    subtitleGapPx: Float = 0f,
+    onSkipClearanceChanged: (Float) -> Unit = {},
+    onNextEpisodeClearanceChanged: (Float) -> Unit = {},
 ) {
     AnimatedVisibility(
         visible = playerControlsLocked && lockedOverlayVisible,
@@ -125,7 +128,8 @@ internal fun BoxScope.PlayerPlaybackOverlays(
             onDismiss = onDismissSkipInterval,
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = sliderEdgePadding, bottom = overlayBottomPadding),
+                .padding(start = sliderEdgePadding, bottom = overlayBottomPadding)
+                .reportSubtitleClearance(subtitleGapPx, onSkipClearanceChanged),
         )
     }
 
@@ -141,7 +145,8 @@ internal fun BoxScope.PlayerPlaybackOverlays(
             onDismiss = onDismissNextEpisode,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = sliderEdgePadding, bottom = overlayBottomPadding),
+                .padding(end = sliderEdgePadding, bottom = overlayBottomPadding)
+                .reportSubtitleClearance(subtitleGapPx, onNextEpisodeClearanceChanged),
         )
     }
 

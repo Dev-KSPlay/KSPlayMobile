@@ -44,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -124,15 +125,22 @@ internal fun PlayerControlsShell(
     onScrubFinished: (Long) -> Unit,
     horizontalSafePadding: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
+    onSubtitleClearanceChanged: (Float) -> Unit = {},
 ) {
     val density = LocalDensity.current
     var timelineHeight by remember { mutableStateOf(0.dp) }
+    val subtitleGapPx = with(density) { PlayerSubtitleLiftGap.toPx() }
+    val showsBottomControls = showPlaybackControls
+    DisposableEffect(showsBottomControls) {
+        onDispose { onSubtitleClearanceChanged(0f) }
+    }
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val centerControlHeight = metrics.playIconSize + maxOf(metrics.playButtonPadding, metrics.sideButtonPadding) * 2
         val centerBottomPadding = if (useLegacyLayout) metrics.centerLift else maxOf(
             metrics.centerLift,
             timelineHeight * 2 + centerControlHeight + 16.dp - maxHeight,
         )
+        val subtitlesClearTimelineOnly = !useLegacyLayout && centerBottomPadding > metrics.centerLift
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -266,13 +274,18 @@ internal fun PlayerControlsShell(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .padding(horizontal = metrics.horizontalPadding)
-                        .padding(bottom = metrics.sliderBottomOffset),
+                        .padding(bottom = metrics.sliderBottomOffset)
+                        .reportSubtitleClearance(subtitleGapPx, onSubtitleClearanceChanged),
                 )
             }
             if (showPlaybackControls && !useLegacyLayout) {
                 Column(
                     modifier = Modifier
                         .onSizeChanged { size -> timelineHeight = with(density) { size.height.toDp() } }
+                        .then(
+                            if (subtitlesClearTimelineOnly) Modifier
+                            else Modifier.reportSubtitleClearance(subtitleGapPx, onSubtitleClearanceChanged)
+                        )
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .windowInsetsPadding(playerTimelineBottomInsets(metrics))
@@ -298,6 +311,11 @@ internal fun PlayerControlsShell(
                         onScrubFinished = {
                             onInteraction()
                             onScrubFinished(it)
+                        },
+                        modifier = if (subtitlesClearTimelineOnly) {
+                            Modifier.reportSubtitleClearance(subtitleGapPx, onSubtitleClearanceChanged)
+                        } else {
+                            Modifier
                         },
                     )
                     PlayerControlActions(
