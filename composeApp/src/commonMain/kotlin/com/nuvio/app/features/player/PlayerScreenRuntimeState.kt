@@ -133,7 +133,6 @@ internal class PlayerScreenRuntime(
     var layoutSize by mutableStateOf(IntSize.Zero)
     var subtitleControlsClearance by mutableStateOf(0f)
     var subtitleSkipClearance by mutableStateOf(0f)
-    var subtitleNextEpisodeClearance by mutableStateOf(0f)
     var playbackSnapshot by mutableStateOf(PlayerPlaybackSnapshot())
     var playbackSnapshotKey by mutableStateOf<PlaybackKey?>(null)
     var playerController by mutableStateOf<PlayerEngineController?>(null)

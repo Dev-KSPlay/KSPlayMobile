@@ -65,7 +65,6 @@ internal fun BoxScope.PlayerPlaybackOverlays(
     onDismissError: () -> Unit,
     subtitleGapPx: Float = 0f,
     onSkipClearanceChanged: (Float) -> Unit = {},
-    onNextEpisodeClearanceChanged: (Float) -> Unit = {},
 ) {
     AnimatedVisibility(
         visible = playerControlsLocked && lockedOverlayVisible,
@@ -142,26 +141,19 @@ internal fun BoxScope.PlayerPlaybackOverlays(
     }
 
     if (isSeries && !playerControlsLocked) {
-        DisposableEffect(Unit) {
-            onDispose { onNextEpisodeClearanceChanged(0f) }
-        }
-        Box(
+        NextEpisodeCard(
+            nextEpisode = nextEpisodeInfo,
+            visible = showNextEpisodeCard || nextEpisodeAutoPlaySearching || nextEpisodeAutoPlayCountdown != null,
+            isAutoPlaySearching = nextEpisodeAutoPlaySearching,
+            autoPlaySourceName = nextEpisodeAutoPlaySourceName,
+            autoPlayCountdownSec = nextEpisodeAutoPlayCountdown,
+            blurred = blurUnwatchedEpisodes && nextEpisodeInfo?.isWatched == false,
+            onPlayNext = onPlayNextEpisode,
+            onDismiss = onDismissNextEpisode,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = sliderEdgePadding, bottom = overlayBottomPadding)
-                .reportSubtitleClearance(subtitleGapPx, onNextEpisodeClearanceChanged),
-        ) {
-            NextEpisodeCard(
-                nextEpisode = nextEpisodeInfo,
-                visible = showNextEpisodeCard || nextEpisodeAutoPlaySearching || nextEpisodeAutoPlayCountdown != null,
-                isAutoPlaySearching = nextEpisodeAutoPlaySearching,
-                autoPlaySourceName = nextEpisodeAutoPlaySourceName,
-                autoPlayCountdownSec = nextEpisodeAutoPlayCountdown,
-                blurred = blurUnwatchedEpisodes && nextEpisodeInfo?.isWatched == false,
-                onPlayNext = onPlayNextEpisode,
-                onDismiss = onDismissNextEpisode,
-            )
-        }
+                .padding(end = sliderEdgePadding, bottom = overlayBottomPadding),
+        )
     }
 
     if (errorMessage != null) {

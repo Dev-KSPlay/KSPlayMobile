@@ -124,10 +124,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val subtitleLift = if (subtitleControlsClearance > 0f) {
         subtitleLiftFraction(subtitleControlsClearance)
     } else {
-        subtitleLiftFraction(
-            if (playerControlsLocked) 0f else subtitleSkipClearance,
-            if (playerControlsLocked || !isSeries) 0f else subtitleNextEpisodeClearance,
-        )
+        subtitleLiftFraction(if (playerControlsLocked) 0f else subtitleSkipClearance)
     }
     LaunchedEffect(playerController, subtitleLift) {
         playerController?.setSubtitleBottomLift(subtitleLift)
@@ -486,7 +483,6 @@ private fun BoxScope.RenderPlaybackOverlays(
         controlsVisible = controlsVisible,
         subtitleGapPx = with(LocalDensity.current) { PlayerSubtitleLiftGap.toPx() },
         onSkipClearanceChanged = { subtitleSkipClearance = it },
-        onNextEpisodeClearanceChanged = { subtitleNextEpisodeClearance = it },
         onSkipInterval = { interval ->
             interval.internalSkipAction(skipIntervals, playbackSnapshot.durationMs)?.let { action ->
                 val durationMs = playbackSnapshot.durationMs
