@@ -53,6 +53,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.graphics.graphicsLayer
@@ -126,9 +129,13 @@ internal fun PlayerControlsShell(
     horizontalSafePadding: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
     onSubtitleClearanceChanged: (Float) -> Unit = {},
+    subtitleFontSizeSp: Int = 0,
 ) {
     val density = LocalDensity.current
     var timelineHeight by remember { mutableStateOf(0.dp) }
+    var toolbarActionBounds by remember { mutableStateOf(Rect.Zero) }
+    var centerControlBounds by remember { mutableStateOf(Rect.Zero) }
+    val safeTopPx = WindowInsets.safeContent.getTop(density).toFloat()
     val subtitleGapPx = with(density) { PlayerSubtitleLiftGap.toPx() }
     val showsBottomControls = showPlaybackControls
     DisposableEffect(showsBottomControls) {
@@ -136,11 +143,23 @@ internal fun PlayerControlsShell(
     }
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val centerControlHeight = metrics.playIconSize + maxOf(metrics.playButtonPadding, metrics.sideButtonPadding) * 2
-        val centerBottomPadding = if (useLegacyLayout) metrics.centerLift else maxOf(
-            metrics.centerLift,
-            timelineHeight * 2 + centerControlHeight + 16.dp - maxHeight,
-        )
-        val subtitlesClearTimelineOnly = !useLegacyLayout && centerBottomPadding > metrics.centerLift
+        val fittedCenterPadding = timelineHeight * 2 + centerControlHeight + 16.dp - maxHeight
+        val subtitleRoom = with(density) { (subtitleFontSizeSp * PLAYER_SUBTITLE_ROOM_LINES).sp.toDp() } +
+            PlayerSubtitleRoomSpacing
+        val roomyCenterPadding = fittedCenterPadding + subtitleRoom * 2
+        val toolbarOverlapsCenter = toolbarActionBounds.width > 0f && centerControlBounds.width > 0f &&
+            toolbarActionBounds.left < centerControlBounds.right && toolbarActionBounds.right > centerControlBounds.left
+        val topLimit = with(density) { (if (toolbarOverlapsCenter) toolbarActionBounds.bottom else safeTopPx).toDp() }
+        val maxCenterPadding = maxHeight - centerControlHeight - (topLimit + PlayerSubtitleLiftGap) * 2
+        val needsSubtitleRoom = !useLegacyLayout && subtitleFontSizeSp > 0 && roomyCenterPadding > metrics.centerLift
+        val makesSubtitleRoom = needsSubtitleRoom && roomyCenterPadding <= maxCenterPadding
+        val centerBottomPadding = when {
+            useLegacyLayout -> metrics.centerLift
+            makesSubtitleRoom -> roomyCenterPadding
+            else -> maxOf(metrics.centerLift, fittedCenterPadding)
+        }
+        val subtitlesClearTimelineOnly = !useLegacyLayout && !makesSubtitleRoom &&
+            (needsSubtitleRoom || centerBottomPadding > metrics.centerLift)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -219,6 +238,7 @@ internal fun PlayerControlsShell(
                             .align(Alignment.TopEnd)
                             .windowInsetsPadding(WindowInsets.safeContent.only(WindowInsetsSides.Top))
                             .padding(horizontal = metrics.horizontalPadding, vertical = metrics.verticalPadding / 4),
+                        onActionsPositioned = { toolbarActionBounds = it },
                     )
                 }
                 ParentalGuideOverlay(
@@ -251,7 +271,8 @@ internal fun PlayerControlsShell(
                         },
                         modifier = Modifier
                             .align(Alignment.Center)
-                            .padding(bottom = centerBottomPadding),
+                            .padding(bottom = centerBottomPadding)
+                            .onGloballyPositioned { centerControlBounds = it.boundsInRoot() },
                     )
                 }
             }

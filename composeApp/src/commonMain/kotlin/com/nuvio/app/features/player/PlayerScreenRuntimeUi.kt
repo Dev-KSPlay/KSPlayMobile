@@ -121,11 +121,14 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
 
     BindAutoSyncRuntimeEffects() // AutoSync hook
 
-    val subtitleLift = subtitleLiftFraction(
-        subtitleControlsClearance,
-        if (playerControlsLocked) 0f else subtitleSkipClearance,
-        if (playerControlsLocked || !isSeries) 0f else subtitleNextEpisodeClearance,
-    )
+    val subtitleLift = if (subtitleControlsClearance > 0f) {
+        subtitleLiftFraction(subtitleControlsClearance)
+    } else {
+        subtitleLiftFraction(
+            if (playerControlsLocked) 0f else subtitleSkipClearance,
+            if (playerControlsLocked || !isSeries) 0f else subtitleNextEpisodeClearance,
+        )
+    }
     LaunchedEffect(playerController, subtitleLift) {
         playerController?.setSubtitleBottomLift(subtitleLift)
     }
@@ -315,6 +318,10 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
             onInteraction = { controlsActivityTick += 1 },
             showPlaybackControls = controlsVisible,
             onSubtitleClearanceChanged = { subtitleControlsClearance = it },
+            subtitleFontSizeSp = if (
+                selectedAddonSubtitleId != null ||
+                (if (serverSubtitleTracks.isEmpty()) selectedSubtitleIndex >= 0 else serverSubtitleTracks.any { it.isSelected })
+            ) subtitleStyle.fontSizeSp else 0,
             onLockToggle = {
                 if (playerControlsLocked) unlockPlayerControls() else lockPlayerControls()
             },

@@ -9,7 +9,11 @@ import kotlin.math.roundToInt
 
 internal val PlayerSubtitleLiftGap = 8.dp
 
+internal val PlayerSubtitleRoomSpacing = 12.dp
+
 internal const val PLAYER_SUBTITLE_MAX_LIFT = 0.6f
+
+internal const val PLAYER_SUBTITLE_ROOM_LINES = 2.5f
 
 internal fun Modifier.reportSubtitleClearance(gapPx: Float, onClearance: (Float) -> Unit): Modifier =
     onGloballyPositioned { coordinates ->

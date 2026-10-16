@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -117,37 +119,49 @@ internal fun BoxScope.PlayerPlaybackOverlays(
     )
 
     if (!playerControlsLocked) {
-        SkipIntroButton(
-            interval = if (!initialLoadCompleted || pausedOverlayVisible) null else activeSkipInterval,
-            skipsToPostCredits = skipsToPostCredits,
-            dismissed = skipIntervalDismissed,
-            controlsVisible = controlsVisible,
-            onSkip = {
-                activeSkipInterval?.let(onSkipInterval)
-            },
-            onDismiss = onDismissSkipInterval,
+        DisposableEffect(Unit) {
+            onDispose { onSkipClearanceChanged(0f) }
+        }
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = sliderEdgePadding, bottom = overlayBottomPadding)
                 .reportSubtitleClearance(subtitleGapPx, onSkipClearanceChanged),
-        )
+        ) {
+            SkipIntroButton(
+                interval = if (!initialLoadCompleted || pausedOverlayVisible) null else activeSkipInterval,
+                skipsToPostCredits = skipsToPostCredits,
+                dismissed = skipIntervalDismissed,
+                controlsVisible = controlsVisible,
+                onSkip = {
+                    activeSkipInterval?.let(onSkipInterval)
+                },
+                onDismiss = onDismissSkipInterval,
+            )
+        }
     }
 
     if (isSeries && !playerControlsLocked) {
-        NextEpisodeCard(
-            nextEpisode = nextEpisodeInfo,
-            visible = showNextEpisodeCard || nextEpisodeAutoPlaySearching || nextEpisodeAutoPlayCountdown != null,
-            isAutoPlaySearching = nextEpisodeAutoPlaySearching,
-            autoPlaySourceName = nextEpisodeAutoPlaySourceName,
-            autoPlayCountdownSec = nextEpisodeAutoPlayCountdown,
-            blurred = blurUnwatchedEpisodes && nextEpisodeInfo?.isWatched == false,
-            onPlayNext = onPlayNextEpisode,
-            onDismiss = onDismissNextEpisode,
+        DisposableEffect(Unit) {
+            onDispose { onNextEpisodeClearanceChanged(0f) }
+        }
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = sliderEdgePadding, bottom = overlayBottomPadding)
                 .reportSubtitleClearance(subtitleGapPx, onNextEpisodeClearanceChanged),
-        )
+        ) {
+            NextEpisodeCard(
+                nextEpisode = nextEpisodeInfo,
+                visible = showNextEpisodeCard || nextEpisodeAutoPlaySearching || nextEpisodeAutoPlayCountdown != null,
+                isAutoPlaySearching = nextEpisodeAutoPlaySearching,
+                autoPlaySourceName = nextEpisodeAutoPlaySourceName,
+                autoPlayCountdownSec = nextEpisodeAutoPlayCountdown,
+                blurred = blurUnwatchedEpisodes && nextEpisodeInfo?.isWatched == false,
+                onPlayNext = onPlayNextEpisode,
+                onDismiss = onDismissNextEpisode,
+            )
+        }
     }
 
     if (errorMessage != null) {
