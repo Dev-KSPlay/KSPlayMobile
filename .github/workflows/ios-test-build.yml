@@ -57,7 +57,7 @@ jobs:
       - name: Verify Apple toolchain
         run: |
           xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-      - name: Configure runtime properties
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Configure runtime properties
         run: |
