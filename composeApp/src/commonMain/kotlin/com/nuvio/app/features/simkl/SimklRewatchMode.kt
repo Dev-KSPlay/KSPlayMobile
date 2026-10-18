@@ -154,12 +154,17 @@ internal fun shouldRecordSimklRewatchOnStop(
     action: TrackingScrobbleAction,
     progressPercent: Double,
     completionThresholdPercent: Double = SIMKL_REWATCH_MIN_PROGRESS_PERCENT,
+    hasRunningSession: Boolean = false,
+    consented: Boolean = false,
 ): Boolean = when {
-    mode != SimklRewatchMode.AUTOMATIC -> false
+    mode == SimklRewatchMode.OFF -> false
     !isSimklRewatchPlanEligible(accountType) -> false
     action != TrackingScrobbleAction.STOP -> false
     progressPercent < completionThresholdPercent -> false
-    else -> true
+    mode == SimklRewatchMode.AUTOMATIC -> true
+    // Semi-automatic writes only where the user said so: a run of the item is open on the account,
+    // or the question before the playback was answered with yes. It is never the client guessing.
+    else -> hasRunningSession || consented
 }
 
 /**
@@ -184,6 +189,30 @@ internal fun shouldPromptSimklRewatch(
     if (action != TrackingScrobbleAction.STOP) return false
     if (outcome != SimklScrobbleOutcome.SCROBBLE) return false
     if (progressPercent < completionThresholdPercent) return false
+    if (!priorWatch.wasWatched) return false
+    val watchedAt = priorWatch.watchedAtEpochMs ?: return true
+    return nowEpochMs - watchedAt >= SIMKL_REWATCH_MIN_GAP_MS
+}
+
+/**
+ * Whether a playback that is about to start should ask the user about opening a run.
+ *
+ * Only the semi-automatic mode asks, and only where the playback is a rewatch of something the
+ * account already finished: a start that is not a rewatch, or one that replaces the session the
+ * account already runs, has nothing to ask about.
+ */
+internal fun shouldAskToStartSimklRewatch(
+    mode: SimklRewatchMode,
+    accountType: String?,
+    action: TrackingScrobbleAction,
+    priorWatch: SimklPriorWatch,
+    nowEpochMs: Long,
+    hasRunningSession: Boolean,
+): Boolean {
+    if (mode != SimklRewatchMode.SEMI_AUTOMATIC) return false
+    if (!isSimklRewatchPlanEligible(accountType)) return false
+    if (action != TrackingScrobbleAction.START) return false
+    if (hasRunningSession) return false
     if (!priorWatch.wasWatched) return false
     val watchedAt = priorWatch.watchedAtEpochMs ?: return true
     return nowEpochMs - watchedAt >= SIMKL_REWATCH_MIN_GAP_MS
