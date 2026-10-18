@@ -67,8 +67,8 @@ import nuvio.composeapp.generated.resources.settings_tracking_rewatch_automatic
 import nuvio.composeapp.generated.resources.settings_tracking_rewatch_automatic_description
 import nuvio.composeapp.generated.resources.settings_tracking_rewatch_dialog_subtitle
 import nuvio.composeapp.generated.resources.settings_tracking_rewatch_dialog_title
-import nuvio.composeapp.generated.resources.settings_tracking_rewatch_manual
-import nuvio.composeapp.generated.resources.settings_tracking_rewatch_manual_description
+import nuvio.composeapp.generated.resources.settings_tracking_rewatch_semi_automatic
+import nuvio.composeapp.generated.resources.settings_tracking_rewatch_semi_automatic_description
 import nuvio.composeapp.generated.resources.settings_tracking_rewatch_nextup_after_two
 import nuvio.composeapp.generated.resources.settings_tracking_rewatch_nextup_after_two_description
 import nuvio.composeapp.generated.resources.settings_tracking_rewatch_nextup_always
@@ -895,9 +895,9 @@ private fun simklRewatchModeOptions(): List<TrackingPickerOption<SimklRewatchMod
         description = stringResource(Res.string.settings_tracking_rewatch_off_description),
     ),
     TrackingPickerOption(
-        value = SimklRewatchMode.MANUAL,
-        title = stringResource(Res.string.settings_tracking_rewatch_manual),
-        description = stringResource(Res.string.settings_tracking_rewatch_manual_description),
+        value = SimklRewatchMode.SEMI_AUTOMATIC,
+        title = stringResource(Res.string.settings_tracking_rewatch_semi_automatic),
+        description = stringResource(Res.string.settings_tracking_rewatch_semi_automatic_description),
     ),
     TrackingPickerOption(
         value = SimklRewatchMode.AUTOMATIC,
@@ -909,7 +909,7 @@ private fun simklRewatchModeOptions(): List<TrackingPickerOption<SimklRewatchMod
 @Composable
 private fun simklRewatchModeLabel(mode: SimklRewatchMode): String = when (mode) {
     SimklRewatchMode.OFF -> stringResource(Res.string.settings_tracking_rewatch_off)
-    SimklRewatchMode.MANUAL -> stringResource(Res.string.settings_tracking_rewatch_manual)
+    SimklRewatchMode.SEMI_AUTOMATIC -> stringResource(Res.string.settings_tracking_rewatch_semi_automatic)
     SimklRewatchMode.AUTOMATIC -> stringResource(Res.string.settings_tracking_rewatch_automatic)
 }
 

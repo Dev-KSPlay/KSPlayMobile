@@ -1355,8 +1355,8 @@
     <string name="settings_tracking_rewatch_nextup_never_description">Rewatches stay out of Continue Watching, and the row follows what you finished watching.</string>
     <string name="settings_tracking_rewatch_off">Off</string>
     <string name="settings_tracking_rewatch_off_description">Nuvio never records rewatch sessions.</string>
-    <string name="settings_tracking_rewatch_manual">Manual</string>
-    <string name="settings_tracking_rewatch_manual_description">Ask after every finished playback of something you already watched, and record it only when you confirm.</string>
+    <string name="settings_tracking_rewatch_semi_automatic">Semi-automatic</string>
+    <string name="settings_tracking_rewatch_semi_automatic_description">Ask before a playback that would start a rewatch, and record the run without asking again once it is open.</string>
     <string name="settings_tracking_rewatch_automatic">Automatic</string>
     <string name="settings_tracking_rewatch_automatic_description">Every finished playback of an already watched episode or movie is recorded as a rewatch.</string>
     <string name="settings_tracking_completion_title">Watched at</string>

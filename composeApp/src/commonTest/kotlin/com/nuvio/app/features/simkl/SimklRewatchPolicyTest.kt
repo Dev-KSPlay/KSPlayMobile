@@ -44,7 +44,7 @@ class SimklRewatchPolicyTest {
         assertFalse(record(SimklRewatchMode.AUTOMATIC, "free"))
         assertFalse(record(SimklRewatchMode.AUTOMATIC, null))
         assertFalse(record(SimklRewatchMode.AUTOMATIC, "unconfirmed"))
-        assertFalse(record(SimklRewatchMode.MANUAL, "pro"))
+        assertFalse(record(SimklRewatchMode.SEMI_AUTOMATIC, "pro"))
         assertFalse(record(SimklRewatchMode.OFF, "pro"))
     }
 
@@ -88,18 +88,18 @@ class SimklRewatchPolicyTest {
         val insideTheGap = nowEpochMs - SIMKL_REWATCH_MIN_GAP_MS + 1L
         val watchedLongAgo = SimklPriorWatch(wasWatched = true, watchedAtEpochMs = olderThanTheGap)
 
-        assertTrue(ask(mode = SimklRewatchMode.MANUAL, accountType = "pro", priorWatch = watchedLongAgo))
+        assertTrue(ask(mode = SimklRewatchMode.SEMI_AUTOMATIC, accountType = "pro", priorWatch = watchedLongAgo))
 
         // The other modes never ask, and neither does a plan that cannot record a rewatch.
         assertFalse(ask(mode = SimklRewatchMode.OFF, accountType = "pro", priorWatch = watchedLongAgo))
         assertFalse(ask(mode = SimklRewatchMode.AUTOMATIC, accountType = "pro", priorWatch = watchedLongAgo))
-        assertFalse(ask(mode = SimklRewatchMode.MANUAL, accountType = "free", priorWatch = watchedLongAgo))
-        assertFalse(ask(mode = SimklRewatchMode.MANUAL, accountType = null, priorWatch = watchedLongAgo))
+        assertFalse(ask(mode = SimklRewatchMode.SEMI_AUTOMATIC, accountType = "free", priorWatch = watchedLongAgo))
+        assertFalse(ask(mode = SimklRewatchMode.SEMI_AUTOMATIC, accountType = null, priorWatch = watchedLongAgo))
 
         // Only a finished stop that Simkl accepted as a scrobble is worth asking about.
         assertFalse(
             ask(
-                mode = SimklRewatchMode.MANUAL,
+                mode = SimklRewatchMode.SEMI_AUTOMATIC,
                 accountType = "pro",
                 priorWatch = watchedLongAgo,
                 action = TrackingScrobbleAction.PAUSE,
@@ -107,7 +107,7 @@ class SimklRewatchPolicyTest {
         )
         assertFalse(
             ask(
-                mode = SimklRewatchMode.MANUAL,
+                mode = SimklRewatchMode.SEMI_AUTOMATIC,
                 accountType = "pro",
                 priorWatch = watchedLongAgo,
                 outcome = SimklScrobbleOutcome.PAUSE,
@@ -115,7 +115,7 @@ class SimklRewatchPolicyTest {
         )
         assertFalse(
             ask(
-                mode = SimklRewatchMode.MANUAL,
+                mode = SimklRewatchMode.SEMI_AUTOMATIC,
                 accountType = "pro",
                 priorWatch = watchedLongAgo,
                 progressPercent = 79.0,
@@ -124,7 +124,7 @@ class SimklRewatchPolicyTest {
         // The same gate the write uses: credits at 93 mean a stop at 85 has not finished.
         assertFalse(
             ask(
-                mode = SimklRewatchMode.MANUAL,
+                mode = SimklRewatchMode.SEMI_AUTOMATIC,
                 accountType = "pro",
                 priorWatch = watchedLongAgo,
                 progressPercent = 85.0,
@@ -133,20 +133,20 @@ class SimklRewatchPolicyTest {
         )
 
         // An item the account does not hold is not a repeat viewing at all.
-        assertFalse(ask(mode = SimklRewatchMode.MANUAL, accountType = "pro", priorWatch = SimklPriorWatch.None))
+        assertFalse(ask(mode = SimklRewatchMode.SEMI_AUTOMATIC, accountType = "pro", priorWatch = SimklPriorWatch.None))
 
         // Simkl folds a watch from the last two days into the session it already has, so a confirmation
         // would do nothing. A row with no timestamp is asked about, since nothing says otherwise.
         assertFalse(
             ask(
-                mode = SimklRewatchMode.MANUAL,
+                mode = SimklRewatchMode.SEMI_AUTOMATIC,
                 accountType = "pro",
                 priorWatch = SimklPriorWatch(wasWatched = true, watchedAtEpochMs = insideTheGap),
             ),
         )
         assertTrue(
             ask(
-                mode = SimklRewatchMode.MANUAL,
+                mode = SimklRewatchMode.SEMI_AUTOMATIC,
                 accountType = "pro",
                 priorWatch = SimklPriorWatch(wasWatched = true, watchedAtEpochMs = null),
             ),
@@ -175,9 +175,9 @@ class SimklRewatchPolicyTest {
         // Off is always available, because turning it off never needs the plan.
         assertTrue(isSimklRewatchModeSelectable(SimklRewatchMode.OFF, "free"))
         assertTrue(isSimklRewatchModeSelectable(SimklRewatchMode.OFF, null))
-        assertFalse(isSimklRewatchModeSelectable(SimklRewatchMode.MANUAL, "free"))
+        assertFalse(isSimklRewatchModeSelectable(SimklRewatchMode.SEMI_AUTOMATIC, "free"))
         assertFalse(isSimklRewatchModeSelectable(SimklRewatchMode.AUTOMATIC, null))
-        assertTrue(isSimklRewatchModeSelectable(SimklRewatchMode.MANUAL, "pro"))
+        assertTrue(isSimklRewatchModeSelectable(SimklRewatchMode.SEMI_AUTOMATIC, "pro"))
         assertTrue(isSimklRewatchModeSelectable(SimklRewatchMode.AUTOMATIC, "vip"))
     }
 

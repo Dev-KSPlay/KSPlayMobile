@@ -13,7 +13,7 @@ import com.nuvio.app.features.watching.domain.ContentEndTolerancePercent
  */
 enum class SimklRewatchMode {
     OFF,
-    MANUAL,
+    SEMI_AUTOMATIC,
     AUTOMATIC,
     ;
 
@@ -25,6 +25,10 @@ enum class SimklRewatchMode {
 
         fun fromStorage(value: String?): SimklRewatchMode {
             val normalized = value?.trim().orEmpty()
+            // "MANUAL" is the mode the first version of the setting shipped as; it asked for the
+            // same consent, only after the playback instead of before it, so the stored answer
+            // keeps its meaning and no migration is needed.
+            if (normalized.equals("MANUAL", ignoreCase = true)) return SEMI_AUTOMATIC
             return entries.firstOrNull { mode -> mode.name.equals(normalized, ignoreCase = true) } ?: Default
         }
     }
@@ -175,7 +179,7 @@ internal fun shouldPromptSimklRewatch(
     nowEpochMs: Long,
     completionThresholdPercent: Double = SIMKL_REWATCH_MIN_PROGRESS_PERCENT,
 ): Boolean {
-    if (mode != SimklRewatchMode.MANUAL) return false
+    if (mode != SimklRewatchMode.SEMI_AUTOMATIC) return false
     if (!isSimklRewatchPlanEligible(accountType)) return false
     if (action != TrackingScrobbleAction.STOP) return false
     if (outcome != SimklScrobbleOutcome.SCROBBLE) return false
