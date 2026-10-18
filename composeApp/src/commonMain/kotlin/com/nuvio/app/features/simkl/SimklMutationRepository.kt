@@ -2,8 +2,6 @@ package com.nuvio.app.features.simkl
 
 import co.touchlab.kermit.Logger
 import com.nuvio.app.features.profiles.ProfileRepository
-import com.nuvio.app.features.tracking.RewatchPrompt
-import com.nuvio.app.features.tracking.RewatchPromptRepository
 import com.nuvio.app.features.tracking.TrackingEpisode
 import com.nuvio.app.features.tracking.TrackingExternalIds
 import com.nuvio.app.features.tracking.TrackingHistoryItem
@@ -243,12 +241,22 @@ object SimklMutationRepository : TrackingListWriter, TrackingHistoryWriter, Trac
         // The stop goes out as it is: the call carries the completion threshold as min_progress, so
         // the account keeps a playback below it as a resumable pause instead of this client
         // rewriting its own stop into one.
+        // The run of the item, when the account already has one, and the answer the user gave to the
+        // question before the playback: together they decide whether the scrobble asks Simkl for a
+        // rewatch. A session the account runs releases the answer, which was for the run it opened.
+        val runningSessionId = snapshot.rewatchSessions.activeRewatchSessionId(media)
+        if (runningSessionId != null) {
+            SimklRewatchConsentRepository.releaseGrant(media)
+        }
+
         val recordRewatch = shouldRecordSimklRewatchOnStop(
             mode = mode,
             accountType = accountType,
             action = action,
             progressPercent = event.progressPercent,
             completionThresholdPercent = completionThresholdPercent,
+            hasRunningSession = runningSessionId != null,
+            consented = SimklRewatchConsentRepository.grantedFor(media),
         )
         val result = service.scrobble(
             action = action,
@@ -256,9 +264,13 @@ object SimklMutationRepository : TrackingListWriter, TrackingHistoryWriter, Trac
             recordRewatch = recordRewatch,
             completionThresholdPercent = completionThresholdPercent,
         )
-        // The snapshot is read before the watch is committed, otherwise the playback would look like
-        // a repeat viewing of itself. Only a stop can produce a rewatch question.
-        val priorWatch = if (action == TrackingScrobbleAction.STOP) {
+        // The prior watch has to be read before the commit, otherwise the playback looks like a
+        // repeat viewing of itself. A stop asks whether the viewing that ended is a rewatch, a start
+        // whether the viewing that is beginning opens a run.
+        val priorWatch = if (
+            action == TrackingScrobbleAction.STOP ||
+            action == TrackingScrobbleAction.START
+        ) {
             snapshot.priorWatchForScrobble(result)
         } else {
             SimklPriorWatch.None
@@ -283,25 +295,36 @@ object SimklMutationRepository : TrackingListWriter, TrackingHistoryWriter, Trac
         } else {
             accountType
         }
-        val nowEpochMs = SimklPlatformClock.nowEpochMs()
-        val watchedAtEpochMs = result.watchedAt?.let(::parseSimklUtcEpochMs) ?: nowEpochMs
-        val askToRecord = shouldPromptSimklRewatch(
-            mode = mode,
-            accountType = planAccountType,
-            action = action,
-            outcome = result.outcome,
-            progressPercent = result.progress,
-            priorWatch = priorWatch,
-            nowEpochMs = nowEpochMs,
-            completionThresholdPercent = completionThresholdPercent,
-        )
-        if (askToRecord) {
-            RewatchPromptRepository.request(
-                RewatchPrompt(
-                    media = media,
-                    watchedAtEpochMs = watchedAtEpochMs,
-                ),
+        if (action == TrackingScrobbleAction.START) {
+            val askToStartRun = shouldAskToStartSimklRewatch(
+                mode = mode,
+                accountType = planAccountType,
+                action = action,
+                priorWatch = priorWatch,
+                nowEpochMs = SimklPlatformClock.nowEpochMs(),
+                hasRunningSession = runningSessionId != null,
             )
+            if (askToStartRun) {
+                SimklRewatchConsentRepository.ask(media)
+            }
+        }
+        if (action == TrackingScrobbleAction.STOP) {
+            // A dismissal is for the playback it happened during: the playback has ended, so the
+            // series may be asked about again the next time it plays.
+            SimklRewatchConsentRepository.clearDismissal(media)
+            if (result.rewatchId != null) {
+                // A rewatch was actually recorded, so the answer before the playback has done its
+                // job. For a movie this is the only release it gets, since movie sessions are never
+                // read. A show keeps its answer until a running session is seen, because its session
+                // only reaches the snapshot a few seconds later.
+                if (media.kind == TrackingMediaKind.MOVIE) {
+                    SimklRewatchConsentRepository.releaseGrant(media)
+                }
+                // A session the account just took is not on the snapshot until the sessions are read
+                // again, and Continue Watching follows that read: refreshing keeps the row current
+                // instead of waiting for the next sync.
+                SimklSyncRepository.refreshAsync(TrackingRefreshIntent.INVALIDATED)
+            }
         }
     }
 
