@@ -239,6 +239,18 @@ object SimklMutationRepository : TrackingListWriter, TrackingHistoryWriter, Trac
         return service.removeFromHistory(items)
     }
 
+    /**
+     * Closes the running rewatch session of an item, which is how a card of that run is dropped.
+     *
+     * Answers false when the account holds no session for the item or the write did not land, so a
+     * caller can leave the card alone instead of hiding something that is still on the account.
+     */
+    suspend fun closeRunningRewatchSession(media: TrackingMediaReference): Boolean {
+        val snapshot = SimklSyncRepository.state.value.snapshot
+        val sessionId = snapshot.rewatchSessions.activeRewatchSessionId(media) ?: return false
+        return service.closeRewatchSession(media, sessionId)
+    }
+
     override suspend fun scrobble(
         profileId: Int,
         action: TrackingScrobbleAction,
