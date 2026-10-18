@@ -107,6 +107,40 @@ internal val SIMKL_REWATCH_RECHECK_DELAYS_MS = longArrayOf(2_000L, 5_000L)
 internal val SIMKL_ALLOW_REWATCH_QUERY: Map<String, String> = mapOf("allow_rewatch" to "yes")
 
 /**
+ * The completion threshold a scrobble call carries, as Simkl's `min_progress`.
+ *
+ * Simkl reads a whole number from 50 to 100 out of the query string, drops the decimals and clamps
+ * what falls outside. It is floored and clamped here, once, so the account and the client judge a
+ * stop by the same number: at or above it the stop marks the item watched, below it the account
+ * keeps the resumable pause the client asked for.
+ */
+internal fun simklMinProgressPercent(completionThresholdPercent: Double): Int =
+    completionThresholdPercent
+        .takeIf { value -> value.isFinite() }
+        ?.toInt()
+        ?.coerceIn(SIMKL_MIN_PROGRESS_MIN_PERCENT, SIMKL_MIN_PROGRESS_MAX_PERCENT)
+        ?: SIMKL_REWATCH_MIN_PROGRESS_PERCENT.toInt()
+
+/** The bounds Simkl accepts for `min_progress`. */
+internal const val SIMKL_MIN_PROGRESS_MIN_PERCENT = 50
+internal const val SIMKL_MIN_PROGRESS_MAX_PERCENT = 100
+
+/** The query key Simkl reads the completion threshold from. It only works in the URL. */
+internal const val SIMKL_MIN_PROGRESS_QUERY_KEY = "min_progress"
+
+/**
+ * The query a scrobble call carries: the completion threshold the call is judged by, and the rewatch
+ * flag where the call is one that may record a session.
+ */
+internal fun simklScrobbleQuery(
+    completionThresholdPercent: Double,
+    recordRewatch: Boolean,
+): Map<String, String> = buildMap {
+    put(SIMKL_MIN_PROGRESS_QUERY_KEY, simklMinProgressPercent(completionThresholdPercent).toString())
+    if (recordRewatch) putAll(SIMKL_ALLOW_REWATCH_QUERY)
+}
+
+/**
  * Whether the scrobble call itself should carry `allow_rewatch=yes`. Only automatic mode does that,
  * because a confirmed rewatch is written after the fact through `/sync/history`.
  */

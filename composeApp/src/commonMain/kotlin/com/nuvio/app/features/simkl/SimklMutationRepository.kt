@@ -125,7 +125,10 @@ internal class SimklMutationService(
             SimklApiRequest(
                 method = SimklHttpMethod.POST,
                 path = "/scrobble/${action.wireValue}",
-                query = if (recordRewatch) SIMKL_ALLOW_REWATCH_QUERY else emptyMap(),
+                query = simklScrobbleQuery(
+                    completionThresholdPercent = completionThresholdPercent,
+                    recordRewatch = recordRewatch,
+                ),
                 body = buildSimklScrobbleBody(event, json),
                 retryPolicy = SimklRetryPolicy.NEVER,
                 scrobbleStopConflictIsSuccess = action == TrackingScrobbleAction.STOP,
@@ -229,47 +232,43 @@ object SimklMutationRepository : TrackingListWriter, TrackingHistoryWriter, Trac
         val accountType = SimklAuthRepository.uiState.value.accountType
         // Where a playback counts as finished. IntroDB's credits marker decides it when there is one,
         // because that is where the content really ends, and the user's own percentage is the fallback.
-        // One number, so the pause downgrade, the stop and the rewatch gates cannot drift apart.
-        val completionThresholdPercent = resolvedSimklCompletionPercent(
-            userThresholdPercent = settings.simklWatchedThresholdPercent.toDouble(),
-            contentEndPercent = event.contentEndPercent,
-        )
-        // A playback the user stopped below their own threshold is a pause for Simkl: leaving it as a
-        // stop would have Simkl apply its own 80% rule and mark the title watched anyway.
-        val reportingAction = if (
-            action == TrackingScrobbleAction.STOP &&
-            event.progressPercent < completionThresholdPercent
-        ) {
-            TrackingScrobbleAction.PAUSE
-        } else {
-            action
-        }
+        // Floored to the whole number the call carries as min_progress, so the stop and the rewatch
+        // gates cannot drift apart from what the account judges the playback by.
+        val completionThresholdPercent = simklMinProgressPercent(
+            resolvedSimklCompletionPercent(
+                userThresholdPercent = settings.simklWatchedThresholdPercent.toDouble(),
+                contentEndPercent = event.contentEndPercent,
+            ),
+        ).toDouble()
+        // The stop goes out as it is: the call carries the completion threshold as min_progress, so
+        // the account keeps a playback below it as a resumable pause instead of this client
+        // rewriting its own stop into one.
         val recordRewatch = shouldRecordSimklRewatchOnStop(
             mode = mode,
             accountType = accountType,
-            action = reportingAction,
+            action = action,
             progressPercent = event.progressPercent,
             completionThresholdPercent = completionThresholdPercent,
         )
         val result = service.scrobble(
-            action = reportingAction,
+            action = action,
             event = event.copy(media = media),
             recordRewatch = recordRewatch,
             completionThresholdPercent = completionThresholdPercent,
         )
         // The snapshot is read before the watch is committed, otherwise the playback would look like
         // a repeat viewing of itself. Only a stop can produce a rewatch question.
-        val priorWatch = if (reportingAction == TrackingScrobbleAction.STOP) {
+        val priorWatch = if (action == TrackingScrobbleAction.STOP) {
             snapshot.priorWatchForScrobble(result)
         } else {
             SimklPriorWatch.None
         }
-        if (reportingAction != TrackingScrobbleAction.START) {
+        if (action != TrackingScrobbleAction.START) {
             SimklSyncRepository.commitScrobble(result)
         }
         if (recordRewatch || result.rewatchStatus != null) {
             log.i {
-                "Simkl rewatch action=${reportingAction.wireValue} status=" +
+                "Simkl rewatch action=${action.wireValue} status=" +
                     "${result.rewatchStatus?.name?.lowercase() ?: "none"} rewatching=${result.rewatchId != null}"
             }
         }
@@ -278,7 +277,7 @@ object SimklMutationRepository : TrackingListWriter, TrackingHistoryWriter, Trac
         val askToRecord = shouldPromptSimklRewatch(
             mode = mode,
             accountType = accountType,
-            action = reportingAction,
+            action = action,
             outcome = result.outcome,
             progressPercent = result.progress,
             priorWatch = priorWatch,
