@@ -248,7 +248,19 @@ object SimklMutationRepository : TrackingListWriter, TrackingHistoryWriter, Trac
     suspend fun closeRunningRewatchSession(media: TrackingMediaReference): Boolean {
         val snapshot = SimklSyncRepository.state.value.snapshot
         val sessionId = snapshot.rewatchSessions.activeRewatchSessionId(media) ?: return false
-        return service.closeRewatchSession(media, sessionId)
+        val closed = runCatching {
+            service.closeRewatchSession(media = media, rewatchId = sessionId)
+        }.onFailure { error ->
+            log.w { "Failed to close the Simkl rewatch session: ${error.message}" }
+        }.getOrDefault(false)
+        // The sessions are read back in the background: Continue Watching follows the session list,
+        // so the run leaves the row once the read sees the new state.
+        refreshRewatchSessions { sessions ->
+            sessions.none { session ->
+                session.rewatchId == sessionId && session.isRunningRewatchSession()
+            }
+        }
+        return closed
     }
 
     override suspend fun scrobble(
@@ -365,79 +377,16 @@ object SimklMutationRepository : TrackingListWriter, TrackingHistoryWriter, Trac
     }
 
     /**
-     * Writes the rewatch session for a playback the user confirmed. Simkl leaves the canonical row
-     * untouched and keeps the viewing as its own session, which is why the write happens after the
-     * scrobble instead of on it: nothing can be recorded before the user answers.
+     * Reads the rewatch sessions back until they say what the write should have done, then stores them.
      *
-     * Whether the write landed is answered by the write itself. Simkl reports an episode the history
-     * already holds as `not_found`, and it reports one every time the question is asked, because the
-     * prompt only appears for a repeat viewing of something watched more than 48 hours ago on a plan
-     * that allows rewatches. Reading the account back instead would be the better proof, but Simkl
-     * publishes the session a while after accepting the write, so that answer arrives too late to
-     * decide anything.
-     *
-     * Continue Watching is refreshed in the background. Once two episodes of the run are rewatched
-     * the row follows, on every device, and the refresh is what makes it follow without a sync.
+     * Runs in the background, because Simkl can take a while to publish a session change and nobody
+     * is waiting for this. The last read is stored even when the condition never became true, so the
+     * snapshot carries the freshest state the account offered.
      */
-    suspend fun recordConfirmedRewatch(prompt: RewatchPrompt): Boolean {
-        if (!isActiveProfile(ProfileRepository.activeProfileId)) return false
-        val media = prompt.media.resolveAnimeEpisodeForSimkl()
-        val written = runCatching {
-            service.addToHistory(
-                items = listOf(
-                    TrackingHistoryItem(
-                        media = media,
-                        watchedAtEpochMs = prompt.watchedAtEpochMs,
-                    ),
-                ),
-                allowRewatch = true,
-            )
-        }.onFailure { error ->
-            log.w { "Failed to record confirmed Simkl rewatch: ${error.message}" }
-        }.isSuccess
-        refreshRewatchSessions(media)
-        if (written) return true
-        // A write that came back as an error can still have landed: Simkl records a repeat viewing and
-        // reports it with a status the client reads as a failure. The account is asked before the answer
-        // is called a failure, and only the episode coordinates are compared, which nothing else on the
-        // account can produce at this moment.
-        return rewatchReachedTheAccount(media)
-    }
-
-    /**
-     * Looks at the account for the episode a failed write was supposed to record.
-     *
-     * Two looks at most, because the user is waiting for the answer here: a rewatch that Simkl took
-     * shows up on the sessions within seconds, and one that it refused never will.
-     */
-    private suspend fun rewatchReachedTheAccount(media: TrackingMediaReference): Boolean {
-        val episode = media.episode ?: return false
-        val seasonNumber = episode.season ?: return false
-        for (waitMs in SIMKL_REWATCH_RECHECK_DELAYS_MS) {
-            delay(waitMs)
-            val sessions = runCatching { remote.fetchRewatchSessions() }.getOrNull() ?: continue
-            if (
-                sessions.holdsRewatchEpisode(media) ||
-                sessions.holdsRewatchAt(seasonNumber = seasonNumber, episodeNumber = episode.number)
-            ) {
-                SimklSyncRepository.adoptRewatchSessions(sessions)
-                return true
-            }
-        }
-        return false
-    }
-
-    /**
-     * Reads the rewatch sessions back until they carry the episode, then stores the runs they make.
-     *
-     * Runs in the background, because Simkl can take a while to publish a session and nobody is
-     * waiting for this. The read that sees the episode is also the one that puts the run into
-     * Continue Watching, so a confirmed rewatch reaches the row without a manual sync.
-     */
-    private fun refreshRewatchSessions(media: TrackingMediaReference) {
+    private fun refreshRewatchSessions(settled: (List<SimklLibraryEntry>) -> Boolean) {
         scope.launch {
             var lastRead: List<SimklLibraryEntry>? = null
-            var seen = false
+            var settledSeen = false
             for (waitMs in SIMKL_REWATCH_SESSION_READ_DELAYS_MS) {
                 delay(waitMs)
                 val sessions = runCatching { remote.fetchRewatchSessions() }
@@ -446,19 +395,18 @@ object SimklMutationRepository : TrackingListWriter, TrackingHistoryWriter, Trac
                     }
                     .getOrNull() ?: continue
                 lastRead = sessions
-                if (sessions.holdsRewatchEpisode(media)) {
-                    seen = true
+                if (settled(sessions)) {
+                    settledSeen = true
                     break
                 }
             }
-            val last = lastRead
-            if (!seen && last != null) {
-                log.i {
-                    "The rewatch sessions do not hold the confirmed episode yet: " +
-                        "${last.count(SimklLibraryEntry::isRewatch)} session rows"
-                }
+            // A write the account took but did not act on looks exactly like one it never saw, and
+            // only the reads tell the two apart. The line is what a report of a card that came back
+            // is diagnosed from.
+            if (!settledSeen && lastRead != null) {
+                log.w { "The account did not report the session change the write asked for" }
             }
-            last?.let { sessions -> SimklSyncRepository.adoptRewatchSessions(sessions) }
+            lastRead?.let { sessions -> SimklSyncRepository.adoptRewatchSessions(sessions) }
         }
     }
 

@@ -241,12 +241,14 @@ object SimklSyncRepository : TrackingProfileStore {
     /**
      * Stores the runs the account's rewatch sessions make, so a rewatch the user just confirmed shows
      * up in Continue Watching at once instead of after the next sync. The sessions come from the
-     * caller, which read them to answer whether the write landed.
+     * caller, which read them to answer whether the write landed; only the running rewatch sessions
+     * are kept, never the canonical rows read beside them.
      */
     internal suspend fun adoptRewatchSessions(sessions: List<SimklLibraryEntry>) {
+        val runningSessions = sessions.runningRewatchSessions()
         val runs = runCatching {
             deriveSimklRewatchRuns(
-                entries = sessions,
+                entries = runningSessions,
                 animeIdPreference = TrackingSettingsRepository.uiState.value.simklAnimeIdPreference,
                 minimumRunEpisodes = TrackingSettingsRepository.uiState.value
                     .simklRewatchNextUpMode.minimumRunEpisodes,
@@ -265,11 +267,11 @@ object SimklSyncRepository : TrackingProfileStore {
             val current = _state.value
             if (
                 current.snapshot.rewatchRuns == runs &&
-                current.snapshot.rewatchSessions == sessions
+                current.snapshot.rewatchSessions == runningSessions
             ) {
                 return@withLock
             }
-            val snapshot = current.snapshot.copy(rewatchRuns = runs, rewatchSessions = sessions)
+            val snapshot = current.snapshot.copy(rewatchRuns = runs, rewatchSessions = runningSessions)
             SimklSyncStorage.savePayload(json.encodeToString(snapshot))
             if (generation == profileGeneration && profileId == ProfileRepository.activeProfileId) {
                 _state.value = current.copy(snapshot = snapshot)
