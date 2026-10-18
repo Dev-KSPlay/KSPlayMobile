@@ -88,10 +88,18 @@ internal class SimklSyncEngine(
         val mode = TrackingSettingsRepository.uiState.value.simklRewatchMode
         val accountType = SimklAuthRepository.uiState.value.accountType
         if (mode == SimklRewatchMode.OFF || !isSimklRewatchPlanEligible(accountType)) {
-            return SimklRewatchRead(
-                runs = current?.rewatchRuns.orEmpty(),
-                sessions = current?.rewatchSessions.orEmpty(),
-            )
+            // A plan that is known to hold no sessions cannot have gained any, so the runs of a
+            // previous sync are dropped rather than kept alive forever. An account type that has not
+            // been read yet keeps them, because the plan is unknown, not known to be ineligible.
+            val knownToHoldNoSessions = mode == SimklRewatchMode.OFF || accountType != null
+            return if (knownToHoldNoSessions) {
+                SimklRewatchRead(runs = emptyList(), sessions = emptyList())
+            } else {
+                SimklRewatchRead(
+                    runs = current?.rewatchRuns.orEmpty(),
+                    sessions = current?.rewatchSessions.orEmpty(),
+                )
+            }
         }
         return runCatching {
             val sessions = remote.fetchRewatchSessions()
