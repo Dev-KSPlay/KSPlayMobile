@@ -30,12 +30,24 @@ internal interface SimklSyncRemote {
     suspend fun fetchPlayback(): List<SimklPlaybackSession>
 
     /**
-     * The account's rewatch sessions. This is a separate read on purpose: a session comes back as a
-     * sidecar row with the same show as the canonical row, so feeding it into [fetchAllItems] would
-     * let rewatch progress replace the canonical watch position.
+     * The account's rewatch sessions, for every type a run can come from. This is a separate read
+     * on purpose: a session comes back as a sidecar row with the same show as the canonical row, so
+     * feeding it into [fetchAllItems] would let rewatch progress replace the canonical watch
+     * position.
      */
     suspend fun fetchRewatchSessions(): List<SimklLibraryEntry>
 }
+
+/**
+ * The types a rewatch session can come from: shows and anime. Anime is its own type in the API, so
+ * reading shows alone left a rewatch the account holds for an anime without a run here. A movie
+ * session carries no episodes, so it never becomes a run, and reading the movies library would be a
+ * whole library call for nothing.
+ */
+private val REWATCH_SESSION_TYPES = listOf(
+    SimklMediaType.SHOWS,
+    SimklMediaType.ANIME,
+)
 
 internal class SimklApiSyncRemote(
     private val client: SimklApiClient = SimklApi.client,
@@ -94,10 +106,13 @@ internal class SimklApiSyncRemote(
         ).body.decode()
 
     override suspend fun fetchRewatchSessions(): List<SimklLibraryEntry> =
+        REWATCH_SESSION_TYPES.flatMap { type -> fetchRewatchSessions(type) }
+
+    private suspend fun fetchRewatchSessions(type: SimklMediaType): List<SimklLibraryEntry> =
         client.execute(
             SimklApiRequest(
                 method = SimklHttpMethod.GET,
-                path = "/sync/all-items/${SimklMediaType.SHOWS.apiValue}",
+                path = "/sync/all-items/${type.apiValue}",
                 query = mapOf(
                     "extended" to "full",
                     "allow_rewatch" to "yes",
@@ -105,7 +120,7 @@ internal class SimklApiSyncRemote(
                     "language" to "en",
                 ),
             ),
-        ).body.decodeAllItems().entriesFor(SimklMediaType.SHOWS)
+        ).body.decodeAllItems().entriesFor(type)
 
     private inline fun <reified T> String.decode(): T = json.decodeFromString(this)
 
