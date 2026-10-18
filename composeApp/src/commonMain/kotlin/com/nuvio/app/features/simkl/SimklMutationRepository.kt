@@ -109,6 +109,30 @@ internal class SimklMutationService(
         return receipt.result
     }
 
+    /**
+     * Moves a running rewatch session to `closed`, which is how a run is dropped.
+     *
+     * The transition is documented on Simkl's rewatches guide: the session keeps its watched episodes
+     * and can be resumed by another write, so dropping a run never loses history. Nothing is committed
+     * locally from the answer: what the account keeps is read back from the sessions by the caller,
+     * which is also what Continue Watching follows.
+     */
+    suspend fun closeRewatchSession(media: TrackingMediaReference, rewatchId: Long): Boolean {
+        require(media.hasResolvableIdentity) {
+            "Simkl mutation requires a media ID or title for the item"
+        }
+        val response = client.execute(
+            SimklApiRequest(
+                method = SimklHttpMethod.POST,
+                path = "/sync/history",
+                query = SIMKL_ALLOW_REWATCH_QUERY,
+                body = buildSimklRewatchCloseBody(media, rewatchId, json),
+                retryPolicy = SimklRetryPolicy.SYNC_WRITE,
+            ),
+        )
+        return response.status in 200..299 || response.isSoftSuccess
+    }
+
     suspend fun scrobble(
         action: TrackingScrobbleAction,
         event: TrackingScrobbleEvent,
@@ -455,6 +479,33 @@ internal fun buildSimklListMutationBody(
     )
 }
 
+/**
+ * Closes a running rewatch session.
+ *
+ * The write names the session and the state it moves to, and carries no watch: closing changes what
+ * the account keeps about the session, it is not a viewing. It has to say `is_rewatch: true` as well,
+ * because that flag is what makes Simkl read the write through its rewatch logic at all: without it
+ * the very same body is answered as a plain history write, the session is left alone, and nothing in
+ * the answer says so.
+ */
+internal fun buildSimklRewatchCloseBody(
+    media: TrackingMediaReference,
+    rewatchId: Long,
+    json: Json = SimklMutationJson,
+): String = json.encodeToString(
+    SimklHistoryMutationRequestDto(
+        shows = listOf(
+            media.toHistoryItemDto(
+                watchedAtEpochMs = null,
+                includeWatchedAt = false,
+                isRewatch = true,
+                rewatchId = rewatchId,
+                rewatchStatus = SimklRewatchStatus.CLOSED.name.lowercase(),
+            ),
+        ),
+    ),
+)
+
 internal fun buildSimklHistoryMutationBody(
     items: Collection<TrackingHistoryItem>,
     isRewatch: Boolean = false,
@@ -585,6 +636,8 @@ private fun TrackingMediaReference.toHistoryItemDto(
     seasons: List<SimklSeasonMutationDto> = emptyList(),
     useTvdbAnimeSeasons: Boolean = false,
     isRewatch: Boolean = false,
+    rewatchId: Long? = null,
+    rewatchStatus: String? = null,
 ): SimklHistoryItemDto = SimklHistoryItemDto(
     title = title.nonBlankOrNull(),
     year = year,
@@ -595,6 +648,8 @@ private fun TrackingMediaReference.toHistoryItemDto(
     seasons = seasons,
     useTvdbAnimeSeasons = useTvdbAnimeSeasons,
     isRewatch = isRewatch.takeIf { it },
+    rewatchId = rewatchId,
+    rewatchStatus = rewatchStatus,
 )
 
 private fun TrackingMediaReference.toScrobbleMediaDto(): SimklScrobbleMediaDto =
@@ -702,6 +757,8 @@ private data class SimklHistoryItemDto(
     val seasons: List<SimklSeasonMutationDto> = emptyList(),
     @SerialName("use_tvdb_anime_seasons") val useTvdbAnimeSeasons: Boolean = false,
     @SerialName("is_rewatch") val isRewatch: Boolean? = null,
+    @SerialName("rewatch_id") val rewatchId: Long? = null,
+    @SerialName("rewatch_status") val rewatchStatus: String? = null,
 )
 
 @Serializable
