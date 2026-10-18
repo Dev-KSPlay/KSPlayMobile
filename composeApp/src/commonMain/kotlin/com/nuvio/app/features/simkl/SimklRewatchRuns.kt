@@ -52,6 +52,24 @@ internal fun SimklLibraryEntry.isRunningRewatchSession(): Boolean =
 internal fun List<SimklLibraryEntry>.runningRewatchSessions(): List<SimklLibraryEntry> =
     filter { entry -> entry.isRewatch && entry.isRunningRewatchSession() }
 
+/**
+ * The session the account reports as running for this item, or null when it holds none.
+ *
+ * The newest running session wins: sessions split when the same episode is written again, and the
+ * one the user is in is the one the account touched last. Used to release a rewatch answer once the
+ * run it asked for is real on the account.
+ */
+internal fun List<SimklLibraryEntry>.activeRewatchSessionId(media: TrackingMediaReference): Long? {
+    val target = media.toSimklMedia()
+    return filter { entry ->
+        entry.isRewatch &&
+            entry.media?.matchesTarget(target) == true &&
+            entry.isRunningRewatchSession()
+    }
+        .maxByOrNull { entry -> entry.lastWatchedAt?.let(::parseSimklUtcEpochMs) ?: Long.MIN_VALUE }
+        ?.rewatchId
+}
+
 
 /**
  * What one read of the rewatch sessions produced: the runs the app offers and the sessions they were
