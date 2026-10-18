@@ -250,8 +250,7 @@ object SimklSyncRepository : TrackingProfileStore {
             deriveSimklRewatchRuns(
                 entries = runningSessions,
                 animeIdPreference = TrackingSettingsRepository.uiState.value.simklAnimeIdPreference,
-                minimumRunEpisodes = TrackingSettingsRepository.uiState.value
-                    .simklRewatchNextUpMode.minimumRunEpisodes,
+                offerRuns = TrackingSettingsRepository.uiState.value.simklRewatchMode != SimklRewatchMode.OFF,
             )
         }.getOrElse { error ->
             log.w { "Could not read the runs out of the rewatch sessions: ${error.message}" }
@@ -296,7 +295,7 @@ object SimklSyncRepository : TrackingProfileStore {
             deriveSimklRewatchRuns(
                 entries = sessions,
                 animeIdPreference = settings.simklAnimeIdPreference,
-                minimumRunEpisodes = settings.simklRewatchNextUpMode.minimumRunEpisodes,
+                offerRuns = settings.simklRewatchMode != SimklRewatchMode.OFF,
             )
         }.getOrElse { error ->
             log.w { "Could not re-derive the runs after a setting change: ${error.message}" }

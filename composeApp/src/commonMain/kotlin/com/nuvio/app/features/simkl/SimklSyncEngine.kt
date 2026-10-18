@@ -107,8 +107,7 @@ internal class SimklSyncEngine(
                 runs = deriveSimklRewatchRuns(
                     entries = sessions,
                     animeIdPreference = TrackingSettingsRepository.uiState.value.simklAnimeIdPreference,
-                    minimumRunEpisodes = TrackingSettingsRepository.uiState.value
-                        .simklRewatchNextUpMode.minimumRunEpisodes,
+                    offerRuns = true,
                 ),
                 sessions = sessions,
             )

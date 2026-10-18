@@ -32,7 +32,6 @@ class SimklRewatchPolicyTest {
     fun `rewatch bookkeeping is off until the user asks for it`() {
         assertEquals(SimklRewatchMode.OFF, SimklRewatchMode.Default)
         assertEquals(80, SIMKL_WATCHED_THRESHOLD_DEFAULT_PERCENT)
-        assertEquals(SimklRewatchNextUpMode.ALWAYS, SimklRewatchNextUpMode.Default)
     }
 
     @Test
@@ -151,17 +150,6 @@ class SimklRewatchPolicyTest {
                 priorWatch = SimklPriorWatch(wasWatched = true, watchedAtEpochMs = null),
             ),
         )
-    }
-
-    @Test
-    fun `the next-up setting decides how much of a run is read back`() {
-        assertEquals(1, SimklRewatchNextUpMode.ALWAYS.minimumRunEpisodes)
-        assertEquals(2, SimklRewatchNextUpMode.AFTER_TWO.minimumRunEpisodes)
-        assertEquals(null, SimklRewatchNextUpMode.NEVER.minimumRunEpisodes)
-        assertEquals(SimklRewatchNextUpMode.AFTER_TWO, SimklRewatchNextUpMode.fromStorage("after_two"))
-        assertEquals(SimklRewatchNextUpMode.NEVER, SimklRewatchNextUpMode.fromStorage("Never"))
-        assertEquals(SimklRewatchNextUpMode.ALWAYS, SimklRewatchNextUpMode.fromStorage("nonsense"))
-        assertEquals(SimklRewatchNextUpMode.ALWAYS, SimklRewatchNextUpMode.fromStorage(null))
     }
 
     @Test
