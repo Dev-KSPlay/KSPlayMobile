@@ -272,11 +272,22 @@ object SimklMutationRepository : TrackingListWriter, TrackingHistoryWriter, Trac
                     "${result.rewatchStatus?.name?.lowercase() ?: "none"} rewatching=${result.rewatchId != null}"
             }
         }
+
+        // Simkl named the plan the account is on, and it is not the one this client had cached: the
+        // rewatch decision below is gated on that plan, so the cache is corrected where the answer is
+        // instead of at the next read of the user settings. Only the plan is written.
+        val planAccountType = if (result.rewatchStatus == SimklRewatchStatus.PRO_REQUIRED) {
+            log.i { "simkl rewatch plan no longer covers sessions; correcting the cached plan" }
+            SimklAuthRepository.markPlanAsFree()
+            SIMKL_FREE_PLAN
+        } else {
+            accountType
+        }
         val nowEpochMs = SimklPlatformClock.nowEpochMs()
         val watchedAtEpochMs = result.watchedAt?.let(::parseSimklUtcEpochMs) ?: nowEpochMs
         val askToRecord = shouldPromptSimklRewatch(
             mode = mode,
-            accountType = accountType,
+            accountType = planAccountType,
             action = action,
             outcome = result.outcome,
             progressPercent = result.progress,
