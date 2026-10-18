@@ -1,7 +1,6 @@
 package com.nuvio.app.features.simkl
 
 import co.touchlab.kermit.Logger
-import com.nuvio.app.features.tracking.RewatchPromptRepository
 import com.nuvio.app.features.tracking.TrackingAuthProvider
 import com.nuvio.app.features.tracking.TrackingCapability
 import com.nuvio.app.features.tracking.TrackingProviderDescriptor
@@ -168,7 +167,7 @@ object SimklAuthRepository : TrackingAuthProvider {
         storedState = SimklStoredAuthState()
         persistMetadata()
         SimklSyncRepository.clearLocalState()
-        RewatchPromptRepository.clear()
+        SimklRewatchConsentRepository.clear()
         publish(error = null)
     }
 

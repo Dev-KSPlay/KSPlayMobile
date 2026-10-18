@@ -10,7 +10,7 @@ import com.nuvio.app.features.simkl.SIMKL_WATCHED_THRESHOLD_DEFAULT_PERCENT
 import com.nuvio.app.features.simkl.SimklRewatchMode
 import com.nuvio.app.features.simkl.SimklRewatchNextUpMode
 import com.nuvio.app.features.simkl.coerceSimklWatchedThresholdPercent
-import com.nuvio.app.features.tracking.RewatchPromptRepository
+import com.nuvio.app.features.simkl.SimklRewatchConsentRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -171,7 +171,7 @@ object TraktSettingsRepository {
         _uiState.value = _uiState.value.copy(simklRewatchMode = mode)
         persist()
         if (!mode.isEnabled) {
-            RewatchPromptRepository.clear()
+            SimklRewatchConsentRepository.clear()
         }
     }
 

@@ -108,6 +108,21 @@ object SimklRewatchConsentRepository {
     }
 
     /**
+     * Forgets every answer and closes an open question, for the profile that gave them.
+     *
+     * The answers are per series and per app run, so they belong to the account that answered: a
+     * profile change starts from nothing, the same way the next app run does.
+     */
+    fun clear() {
+        _question.value = null
+        synchronized(lock) {
+            grantedSeriesKeys.clear()
+            declinedSeriesKeys.clear()
+            dismissedSeriesKeys.clear()
+        }
+    }
+
+    /**
      * The series a reference belongs to, whatever episode it carries. An answer is about the series,
      * because the run it opens covers the episodes that follow the one that was asked about.
      */
