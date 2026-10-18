@@ -38,9 +38,11 @@ internal const val SIMKL_REWATCH_MIN_PROGRESS_PERCENT = 80.0
  *
  * Simkl itself marks a playback watched at 80%, so the slider cannot start lower; above that the
  * user decides when Nuvio reports a finished playback, and therefore when Simkl is told about it.
+ * The top of the window is the whole scale: the threshold rides on the call as `min_progress`, so
+ * 100 means only a playback that reached the very end is reported as finished.
  */
 internal const val SIMKL_WATCHED_THRESHOLD_MIN_PERCENT = 80
-internal const val SIMKL_WATCHED_THRESHOLD_MAX_PERCENT = 95
+internal const val SIMKL_WATCHED_THRESHOLD_MAX_PERCENT = 100
 internal const val SIMKL_WATCHED_THRESHOLD_DEFAULT_PERCENT = 80
 
 internal val SimklWatchedThresholdRange: IntRange =
