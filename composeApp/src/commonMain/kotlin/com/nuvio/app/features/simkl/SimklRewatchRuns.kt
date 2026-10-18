@@ -24,7 +24,7 @@ internal fun deriveSimklRewatchRuns(
     minimumRunEpisodes: Int?,
 ): List<RewatchRunPosition> {
     val requiredEpisodes = minimumRunEpisodes ?: return emptyList()
-    val sessions = entries.filter { entry -> entry.isRewatch && entry.media != null }
+    val sessions = entries.filter { entry -> entry.isRewatch && entry.media != null && entry.isRunningRewatchSession() }
     if (sessions.isEmpty()) return emptyList()
     return sessions
         .groupBy { entry -> entry.media?.canonicalContentId(animeIdPreference).orEmpty() }
@@ -34,6 +34,24 @@ internal fun deriveSimklRewatchRuns(
         }
         .sortedByDescending(RewatchRunPosition::markedAtEpochMs)
 }
+
+private const val ACTIVE_REWATCH_STATUS = "active"
+
+/**
+ * A session the account still reports as running is the run the user is in; a closed or finished
+ * one is a run they left, and a canonical row is not a session at all.
+ */
+internal fun SimklLibraryEntry.isRunningRewatchSession(): Boolean =
+    rewatchStatus?.trim()?.equals(ACTIVE_REWATCH_STATUS, ignoreCase = true) == true
+
+/**
+ * Only the running sessions of the read, which is what a snapshot ever needs to store: a read
+ * returns the whole show library when it asks for rewatches, and every reader of the stored
+ * sessions already filters to exactly these rows.
+ */
+internal fun List<SimklLibraryEntry>.runningRewatchSessions(): List<SimklLibraryEntry> =
+    filter { entry -> entry.isRewatch && entry.isRunningRewatchSession() }
+
 
 /**
  * What one read of the rewatch sessions produced: the runs the app offers and the sessions they were
