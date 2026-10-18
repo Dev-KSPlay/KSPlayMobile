@@ -226,6 +226,7 @@ fun DetailSeriesContent(
                             progressByVideoId = progressByVideoId,
                             episodeRatings = episodeRatings,
                             episodeRatingsVisibility = episodeRatingsVisibility,
+                            rewatchedEpisodes = rewatchedEpisodes,
                             blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                             preferredEpisodeNumber = preferredEpisodeNumberForSeason(
                                 displayedSeasonNumber = seasonForContent,
@@ -259,6 +260,7 @@ fun DetailSeriesContent(
                                             episode = episode,
                                         ),
                                     episodeRatingsVisibility = episodeRatingsVisibility,
+                                    rewatchedEpisodes = rewatchedEpisodes,
                                     blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                                     sizing = sizing,
                                     onClick = { onEpisodeClick?.invoke(episode) },
@@ -319,6 +321,7 @@ internal fun DetailSeriesListEpisode(
     episodeRatings: Map<Pair<Int, Int>, Double>,
     episodeRatingsVisibility: EpisodeRatingsVisibility,
     blurUnwatchedEpisodes: Boolean,
+    rewatchedEpisodes: Set<Pair<Int, Int>> = emptySet(),
     onEpisodeClick: ((MetaVideo) -> Unit)?,
     onEpisodeLongPress: ((MetaVideo) -> Unit)?,
     modifier: Modifier = Modifier,
@@ -344,6 +347,7 @@ internal fun DetailSeriesListEpisode(
                     episode = episode,
                 ),
             episodeRatingsVisibility = episodeRatingsVisibility,
+            rewatchedEpisodes = rewatchedEpisodes,
             blurUnwatchedEpisodes = blurUnwatchedEpisodes,
             sizing = sizing,
             onClick = { onEpisodeClick?.invoke(episode) },
@@ -708,6 +712,7 @@ private fun EpisodeHorizontalRow(
     episodeRatings: Map<Pair<Int, Int>, Double>,
     episodeRatingsVisibility: EpisodeRatingsVisibility,
     blurUnwatchedEpisodes: Boolean,
+    rewatchedEpisodes: Set<Pair<Int, Int>> = emptySet(),
     preferredEpisodeNumber: Int? = null,
     onEpisodeClick: ((MetaVideo) -> Unit)?,
     onEpisodeLongPress: ((MetaVideo) -> Unit)?,
@@ -766,6 +771,7 @@ private fun EpisodeHorizontalRow(
                         episode = episode,
                     ),
                 episodeRatingsVisibility = episodeRatingsVisibility,
+                rewatchedEpisodes = rewatchedEpisodes,
                 blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                 metrics = rowMetrics,
                 onClick = { onEpisodeClick?.invoke(episode) },
@@ -774,6 +780,16 @@ private fun EpisodeHorizontalRow(
         }
     }
 }
+
+/**
+ * How solid the watched marker is on an episode a rewatch in progress has not reached yet.
+ *
+ * A value rather than a number in the drawing code, so the look can be tuned without touching the
+ * layout: the marker is the same one the app has always drawn, only faded while a run owns the
+ * meaning of a full one. The fade has to be deep enough to read as "not this run's yet" next to a
+ * solid marker.
+ */
+private const val REWATCH_PENDING_MARKER_ALPHA = 0.35f
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -785,6 +801,7 @@ private fun EpisodeHorizontalCard(
     isWatched: Boolean,
     episodeRatingsVisibility: EpisodeRatingsVisibility,
     blurUnwatchedEpisodes: Boolean,
+    rewatchedEpisodes: Set<Pair<Int, Int>> = emptySet(),
     metrics: EpisodeHorizontalCardMetrics,
     onClick: (() -> Unit)? = null,
     onLongPress: (() -> Unit)? = null,
@@ -851,8 +868,20 @@ private fun EpisodeHorizontalCard(
                 ),
         )
 
+        // A run in progress is what gives the marker two meanings: solid marks an episode the run
+        // has already rewatched, and faded marks one the account watched before the run has not
+        // reached yet. Without a run every watched episode keeps the solid marker it always had.
+        val isMarkedRewatched = remember(video.season, video.episode, rewatchedEpisodes) {
+            video.seasonEpisodeKey()?.let { key -> key in rewatchedEpisodes } ?: false
+        }
+        val rewatchMarkerAlpha = if (rewatchedEpisodes.isNotEmpty() && isWatched && !isMarkedRewatched) {
+            REWATCH_PENDING_MARKER_ALPHA
+        } else {
+            1f
+        }
         NuvioAnimatedWatchedBadge(
             isVisible = isWatched,
+            alpha = rewatchMarkerAlpha,
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(metrics.contentPadding),
@@ -1171,6 +1200,7 @@ private fun EpisodeListCard(
     isWatched: Boolean,
     episodeRatingsVisibility: EpisodeRatingsVisibility,
     blurUnwatchedEpisodes: Boolean,
+    rewatchedEpisodes: Set<Pair<Int, Int>> = emptySet(),
     sizing: SeriesContentSizing,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
@@ -1241,8 +1271,20 @@ private fun EpisodeListCard(
                         .padding(start = 8.dp, top = 8.dp),
                 )
 
+                // A run in progress is what gives the marker two meanings: solid marks an episode
+                // the run has already rewatched, and faded marks one the account watched before the
+                // run has not reached yet. Without a run every watched episode keeps the solid marker.
+                val isMarkedRewatched = remember(video.season, video.episode, rewatchedEpisodes) {
+                    video.seasonEpisodeKey()?.let { key -> key in rewatchedEpisodes } ?: false
+                }
+                val rewatchMarkerAlpha = if (rewatchedEpisodes.isNotEmpty() && isWatched && !isMarkedRewatched) {
+                    REWATCH_PENDING_MARKER_ALPHA
+                } else {
+                    1f
+                }
                 NuvioAnimatedWatchedBadge(
                     isVisible = isWatched,
+                    alpha = rewatchMarkerAlpha,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(8.dp),

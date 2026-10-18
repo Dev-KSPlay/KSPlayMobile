@@ -614,9 +614,18 @@ fun MetaDetailsScreen(
                 val cwPrefs by ContinueWatchingPreferencesRepository.uiState.collectAsStateWithLifecycle()
                 // A rewatch run the account is in the middle of decides which episode Play offers, so
                 // the button keeps following the run instead of the old watch position.
-                val simklRewatchRuns = SimklSyncRepository.state.collectAsStateWithLifecycle().value.snapshot.rewatchRuns
+                val simklSnapshot = SimklSyncRepository.state.collectAsStateWithLifecycle().value.snapshot
+                val simklRewatchRuns = simklSnapshot.rewatchRuns
                 val rewatchRun = remember(simklRewatchRuns, meta.id) {
                     simklRewatchRuns.firstOrNull { run -> run.matches(meta.id) }
+                }
+                // The episodes the running rewatch of the item has covered, for the marker the episode
+                // list draws. Only a run's own episodes are collected; without a run the set is empty
+                // and the list draws its marker exactly as it did before rewatches existed.
+                val rewatchEpisodes = remember(rewatchRun, simklSnapshot.rewatchSessions) {
+                    rewatchRun
+                        ?.let { run -> simklSnapshot.rewatchSessions.rewatchedEpisodesOf(run.contentId) }
+                        .orEmpty()
                 }
                 val shuffleSettings = shuffleProfile.settings(meta.id, meta.type)
                 val hasShuffleEpisodes = remember(meta.videos) {
@@ -2426,6 +2435,7 @@ private fun ConfiguredMetaSections(
                         episodeRatings = episodeImdbRatings,
                         episodeRatingsVisibility = settings.episodeRatingsVisibility,
                         blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                        rewatchedEpisodes = rewatchEpisodes,
                         onEpisodeClick = onEpisodeClick,
                         onEpisodeLongPress = onEpisodeLongPress,
                         onSeasonLongPress = onSeasonLongPress,
