@@ -84,8 +84,16 @@ internal class SimklSyncEngine(
      * A failed read keeps what the previous sync found: losing the network must not empty the
      * Continue Watching cards the user is looking at.
      */
-    private suspend fun readRewatchRuns(current: SimklSyncSnapshot?): SimklRewatchRead =
-        runCatching {
+    private suspend fun readRewatchRuns(current: SimklSyncSnapshot?): SimklRewatchRead {
+        val mode = TrackingSettingsRepository.uiState.value.simklRewatchMode
+        val accountType = SimklAuthRepository.uiState.value.accountType
+        if (mode == SimklRewatchMode.OFF || !isSimklRewatchPlanEligible(accountType)) {
+            return SimklRewatchRead(
+                runs = current?.rewatchRuns.orEmpty(),
+                sessions = current?.rewatchSessions.orEmpty(),
+            )
+        }
+        return runCatching {
             val sessions = remote.fetchRewatchSessions()
             SimklRewatchRead(
                 runs = deriveSimklRewatchRuns(
@@ -103,6 +111,7 @@ internal class SimklSyncEngine(
                 sessions = current?.rewatchSessions.orEmpty(),
             )
         }
+    }
 }
 
 internal fun mergeDelta(
