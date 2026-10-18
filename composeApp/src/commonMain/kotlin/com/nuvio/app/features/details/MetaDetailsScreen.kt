@@ -642,7 +642,7 @@ fun MetaDetailsScreen(
                 } else {
                     null
                 }
-                val seriesAction = remember(watchProgressUiState.entries, watchedUiState.items, meta, todayIsoDate, cwPrefs.upNextFromFurthestEpisode, watchedUiState.watchedKeys, shuffleSettings, shuffleVisit, shuffleProfileId, rewatchRun) {
+                val seriesAction = remember(watchProgressUiState.entries, watchedUiState.items, meta, todayIsoDate, cwPrefs.upNextFromFurthestEpisode, cwPrefs.showUnairedNextUp, watchedUiState.watchedKeys, shuffleSettings, shuffleVisit, shuffleProfileId, rewatchRun) {
                     if (shuffleSettings.enabled) meta.shufflePrimaryAction(
                         profileId = shuffleProfileId,
                         settings = shuffleSettings,
@@ -656,6 +656,7 @@ fun MetaDetailsScreen(
                             watchedItems = watchedUiState.items,
                             todayIsoDate = todayIsoDate,
                             preferFurthestEpisode = cwPrefs.upNextFromFurthestEpisode,
+                            showUnairedNextUp = cwPrefs.showUnairedNextUp,
                             watchedKeys = watchedUiState.watchedKeys,
                             allowRewatch = true,
                             rewatchSeasonNumber = rewatchRun?.seasonNumber,
