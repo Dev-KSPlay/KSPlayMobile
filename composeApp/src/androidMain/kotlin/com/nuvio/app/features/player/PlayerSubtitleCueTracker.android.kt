@@ -17,7 +17,9 @@ internal class SubtitleCueTracker {
     private var lastKey: String? = null
 
     fun update(cues: List<Cue>) {
-        val key = cues.joinToString("\u0000") { it.text?.toString().orEmpty() }
+        val key = cues.joinToString("\u0000") { cue ->
+            cue.bitmap?.let { "\u0001${System.identityHashCode(it)}" } ?: cue.text?.toString().orEmpty()
+        }
         if (key == lastKey) return
         lastKey = key
         visible = cues.any { !it.text.isNullOrBlank() || it.bitmap != null }

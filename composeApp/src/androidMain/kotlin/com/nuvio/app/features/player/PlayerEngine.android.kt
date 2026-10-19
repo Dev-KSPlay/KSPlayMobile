@@ -2098,9 +2098,7 @@ private fun PlayerView.releaseLibassOverlay() {
 }
 
 private fun PlayerView.applySubtitleStyle(style: SubtitleStyleState, pipScale: Float = 1.0f, liftFraction: Float = 0f) {
-    setTag(R.id.player_view_subtitle_lift_state, SubtitleLiftState(style, pipScale, liftFraction))
-    bindSubtitleLiftLayoutListener()
-    val liftInView = subtitleLiftInView(liftFraction)
+    val liftInView = liftFraction.coerceIn(0f, PLAYER_SUBTITLE_MAX_LIFT)
     subtitleView?.apply {
         val baseBottomPaddingFraction = SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION * 2f / 3f
         val offsetFraction = (style.bottomOffset / 1000f).coerceIn(0f, 0.2f)
@@ -2123,33 +2121,6 @@ private fun PlayerView.applySubtitleStyle(style: SubtitleStyleState, pipScale: F
             )
         )
         setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, style.fontSizeSp.toFloat() * pipScale)
-    }
-}
-
-private data class SubtitleLiftState(
-    val style: SubtitleStyleState,
-    val pipScale: Float,
-    val liftFraction: Float,
-)
-
-private fun PlayerView.subtitleLiftInView(liftFraction: Float): Float {
-    if (liftFraction <= 0f) return 0f
-    val subtitles = subtitleView ?: return liftFraction
-    val frame = subtitles.parent as? android.view.View ?: return liftFraction
-    if (height <= 0 || subtitles.height <= 0) return liftFraction
-    val bottomGap = (height - (frame.y + frame.height)).coerceAtLeast(0f)
-    val liftPx = liftFraction * height - bottomGap
-    return (liftPx / subtitles.height).coerceIn(0f, PLAYER_SUBTITLE_MAX_LIFT)
-}
-
-private fun PlayerView.bindSubtitleLiftLayoutListener() {
-    val frame = subtitleView?.parent as? android.view.View ?: return
-    if (frame.getTag(R.id.player_view_subtitle_lift_state) != null) return
-    frame.setTag(R.id.player_view_subtitle_lift_state, true)
-    frame.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
-        if (left == oldLeft && top == oldTop && right == oldRight && bottom == oldBottom) return@addOnLayoutChangeListener
-        val state = getTag(R.id.player_view_subtitle_lift_state) as? SubtitleLiftState ?: return@addOnLayoutChangeListener
-        if (state.liftFraction > 0f) post { applySubtitleStyle(state.style, state.pipScale, state.liftFraction) }
     }
 }
 
