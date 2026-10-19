@@ -37,6 +37,7 @@ internal class SidecarSubtitleController(
     private val scope: CoroutineScope,
     private val getPlayer: () -> Player?,
     private val getSubtitleDelayMs: () -> Int = { 0 },
+    private val onCuesShown: (List<Cue>) -> Unit = {},
 ) {
     private var sidecarSubtitleJob: Job? = null
     private var sidecarGenerationCounter = 0L
@@ -63,6 +64,11 @@ internal class SidecarSubtitleController(
         return sidecarParserFactory.supportsFormat(format)
     }
 
+    private fun SubtitleView.showCues(cues: List<Cue>) {
+        setCues(cues)
+        onCuesShown(cues)
+    }
+
     fun bindSubtitleView(subtitleView: SubtitleView?) {
         exoSubtitleViewRef = subtitleView?.let { WeakReference(it) }
         if (subtitleView == null && activeSidecarSubtitleKey != null) {
@@ -84,7 +90,7 @@ internal class SidecarSubtitleController(
         if (clearView) {
             postToSubtitleView { view ->
                 view.setTag(R.id.player_view_sidecar_generation_tag, null)
-                view.setCues(emptyList())
+                view.showCues(emptyList())
             }
         }
     }
@@ -109,7 +115,7 @@ internal class SidecarSubtitleController(
         sidecarTimedCues = emptyList()
         postToSubtitleView { view ->
             view.setTag(R.id.player_view_sidecar_generation_tag, generation)
-            view.setCues(emptyList())
+            view.showCues(emptyList())
         }
         fun isCurrent() =
             activeSidecarSubtitleKey == subtitleKey && activeSidecarGeneration == generation
@@ -137,7 +143,7 @@ internal class SidecarSubtitleController(
                     sidecarTimedCues = emptyList()
                     postToSubtitleView { view ->
                         view.setTag(R.id.player_view_sidecar_generation_tag, null)
-                        view.setCues(emptyList())
+                        view.showCues(emptyList())
                     }
                     return@launch
                 }
@@ -165,7 +171,7 @@ internal class SidecarSubtitleController(
                 sidecarTimedCues = emptyList()
                 postToSubtitleView { view ->
                     view.setTag(R.id.player_view_sidecar_generation_tag, null)
-                    view.setCues(emptyList())
+                    view.showCues(emptyList())
                 }
             }
         }
@@ -190,7 +196,7 @@ internal class SidecarSubtitleController(
                 activeSidecarGeneration == currentGeneration &&
                 view.getTag(R.id.player_view_sidecar_generation_tag) == currentGeneration
             ) {
-                view.setCues(active)
+                view.showCues(active)
             }
         }
     }

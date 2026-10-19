@@ -335,7 +335,14 @@ actual fun PlatformPlayerSurface(
     // Polling for snapshots
     LaunchedEffect(bridge) {
         var lastReportedError: String? = null
+        var lastSubtitleText: String? = null
+        var subtitleCueVersion = 0L
         while (isActive) {
+            val subtitleText = bridge.getProperty("sub-text")
+            if (subtitleText != lastSubtitleText) {
+                lastSubtitleText = subtitleText
+                subtitleCueVersion += 1
+            }
             val snapshot = PlayerPlaybackSnapshot(
                 isLoading = bridge.getIsLoading(),
                 isPlaying = bridge.getIsPlaying(),
@@ -344,6 +351,8 @@ actual fun PlatformPlayerSurface(
                 positionMs = bridge.getPositionMs(),
                 bufferedPositionMs = bridge.getBufferedMs(),
                 playbackSpeed = bridge.getPlaybackSpeed(),
+                subtitleCueVersion = subtitleCueVersion,
+                subtitleCueVisible = subtitleText.isNotBlank(),
             )
             latestOnSnapshot.value(snapshot)
             val errorMessage = bridge.getErrorMessage().ifBlank { null }

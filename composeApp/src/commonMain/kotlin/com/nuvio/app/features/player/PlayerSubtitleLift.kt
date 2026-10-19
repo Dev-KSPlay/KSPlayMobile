@@ -33,3 +33,27 @@ internal fun mpvSubtitlePositionWithLift(position: Int, liftFraction: Float): In
     if (liftFraction <= 0f) return position
     return minOf(position, (100f * (1f - liftFraction)).roundToInt())
 }
+
+internal const val PLAYER_SUBTITLE_LIFT_DROP_TIMEOUT_MS = 3_000L
+
+internal data class SubtitleLiftDecision(
+    val appliedLift: Float,
+    val pendingDropCueVersion: Long?,
+)
+
+internal fun nextSubtitleLift(
+    targetLift: Float,
+    appliedLift: Float,
+    cueVersion: Long,
+    cueVisible: Boolean,
+    paused: Boolean,
+    pendingDropCueVersion: Long?,
+    dropTimedOut: Boolean,
+): SubtitleLiftDecision {
+    if (targetLift >= appliedLift || !cueVisible || paused || dropTimedOut) {
+        return SubtitleLiftDecision(targetLift, null)
+    }
+    if (pendingDropCueVersion == null) return SubtitleLiftDecision(appliedLift, cueVersion)
+    if (cueVersion != pendingDropCueVersion) return SubtitleLiftDecision(targetLift, null)
+    return SubtitleLiftDecision(appliedLift, pendingDropCueVersion)
+}

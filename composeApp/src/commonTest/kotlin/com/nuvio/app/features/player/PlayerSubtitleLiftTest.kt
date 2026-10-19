@@ -18,4 +18,27 @@ class PlayerSubtitleLiftTest {
         assertEquals(60, mpvSubtitlePositionWithLift(60, 0.3f))
         assertEquals(70, mpvSubtitlePositionWithLift(140, 0.3f))
     }
+
+    @Test
+    fun liftRisesRightAway() {
+        assertEquals(
+            SubtitleLiftDecision(0.3f, null),
+            nextSubtitleLift(0.3f, 0f, cueVersion = 4, cueVisible = true, paused = false, pendingDropCueVersion = null, dropTimedOut = false),
+        )
+    }
+
+    @Test
+    fun liftDropsOnlyAfterTheShownLineChanges() {
+        val waiting = nextSubtitleLift(0f, 0.3f, cueVersion = 4, cueVisible = true, paused = false, pendingDropCueVersion = null, dropTimedOut = false)
+        assertEquals(SubtitleLiftDecision(0.3f, 4L), waiting)
+        assertEquals(waiting, nextSubtitleLift(0f, 0.3f, 4, true, false, waiting.pendingDropCueVersion, false))
+        assertEquals(SubtitleLiftDecision(0f, null), nextSubtitleLift(0f, 0.3f, 5, true, false, waiting.pendingDropCueVersion, false))
+    }
+
+    @Test
+    fun liftDropsRightAwayWithoutALinePausedOrAfterTheTimeout() {
+        assertEquals(SubtitleLiftDecision(0f, null), nextSubtitleLift(0f, 0.3f, 4, cueVisible = false, paused = false, pendingDropCueVersion = null, dropTimedOut = false))
+        assertEquals(SubtitleLiftDecision(0f, null), nextSubtitleLift(0f, 0.3f, 4, cueVisible = true, paused = true, pendingDropCueVersion = null, dropTimedOut = false))
+        assertEquals(SubtitleLiftDecision(0f, null), nextSubtitleLift(0f, 0.3f, 4, cueVisible = true, paused = false, pendingDropCueVersion = 4L, dropTimedOut = true))
+    }
 }
