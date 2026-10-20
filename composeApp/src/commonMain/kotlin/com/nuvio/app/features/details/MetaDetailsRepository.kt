@@ -17,6 +17,7 @@ import com.nuvio.app.features.servers.ServerItemRef
 import com.nuvio.app.features.servers.ServerUserStateProjection
 import com.nuvio.app.features.servers.message
 import com.nuvio.app.features.servers.serverFailure
+import com.nuvio.app.features.simkl.SimklEpisodeReleaseDates
 import com.nuvio.app.features.tmdb.TmdbMetadataService
 import com.nuvio.app.features.tmdb.TmdbService
 import com.nuvio.app.features.tmdb.TmdbSettingsRepository
@@ -273,6 +274,7 @@ object MetaDetailsRepository {
     private const val METADATA_PROVIDER_READY_TIMEOUT_MS = 10_000L
     private const val TMDB_ENRICH_TIMEOUT_MS = 5_000L
     private const val MDBLIST_ENRICH_TIMEOUT_MS = 5_000L
+    private const val RELEASE_DATES_TIMEOUT_MS = 3_000L
 
     private suspend fun tryFetchMeta(
         manifest: AddonManifest,
@@ -317,7 +319,7 @@ object MetaDetailsRepository {
                 val first = enriched.videos.first()
                 log.d { "First video: id=${first.id} title=${first.title} s=${first.season} e=${first.episode} embeddedStreams=${first.streams.size}" }
             }
-            enriched
+            withReleaseDates(enriched)
         } catch (e: Throwable) {
             if (e is CancellationException) throw e
             log.e(e) { "Failed to fetch/parse meta from $url (manifest=${manifest.transportUrl})" }
@@ -375,7 +377,12 @@ object MetaDetailsRepository {
                 id = id,
                 settings = TmdbSettingsRepository.snapshot(),
             )
-        }
+        }?.let { withReleaseDates(it) }
+
+    private suspend fun withReleaseDates(meta: MetaDetails): MetaDetails =
+        withTimeoutOrNull(RELEASE_DATES_TIMEOUT_MS) {
+            SimklEpisodeReleaseDates.withReleaseDates(meta)
+        } ?: meta
 
     private suspend fun publishLoadedMeta(
         requestKey: String,
