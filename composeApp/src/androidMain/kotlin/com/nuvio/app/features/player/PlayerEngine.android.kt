@@ -274,6 +274,8 @@ private fun ExoPlayerSurface(
     var videoAspectRatio by remember(playerSourceKey) { mutableStateOf(0f) }
     val latestVideoAspectRatio = rememberUpdatedState(videoAspectRatio)
     var currentSubtitleStyle by remember { mutableStateOf(SubtitleStyleState.DEFAULT) }
+    var subtitleLiftFraction by remember { mutableStateOf(0f) }
+    val subtitleCueTracker = remember { SubtitleCueTracker() }
     var decoderPriorityOverride by remember(playerSourceKey) { mutableStateOf<Int?>(null) }
     var fallbackStartPositionMs by remember(playerSourceKey) { mutableStateOf<Long?>(null) }
     val effectiveDecoderPriority = decoderPriorityOverride ?: playerSettings.decoderPriority
@@ -397,6 +399,7 @@ private fun ExoPlayerSurface(
             videoBoundsFractionProvider = {
                 playerViewRef?.videoBoundsFraction(latestVideoAspectRatio.value)
             },
+            onCuesShown = subtitleCueTracker::update,
         )
             .setExtensionRendererMode(effectiveDecoderPriority)
             .setEnableDecoderFallback(true)
@@ -504,10 +507,11 @@ private fun ExoPlayerSurface(
     }
 
     fun dispatchExoPlayerSnapshot() {
-        val snapshot = exoPlayer.snapshot()
+        val snapshot = exoPlayer.snapshot().withSubtitleCues(subtitleCueTracker)
         latestOnSnapshot.value(snapshot)
         nowPlayingController.syncPlayback(snapshot)
     }
+    subtitleCueTracker.onChanged = ::dispatchExoPlayerSnapshot
 
     DisposableEffect(nowPlayingController) {
         onDispose { nowPlayingController.release() }
@@ -553,6 +557,7 @@ private fun ExoPlayerSurface(
             scope = coroutineScope,
             getPlayer = { exoPlayer },
             getSubtitleDelayMs = { latestSubtitleDelayMs.value },
+            onCuesShown = subtitleCueTracker::update,
         )
     }
 
@@ -710,7 +715,7 @@ private fun ExoPlayerSurface(
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
-                latestOnSnapshot.value(exoPlayer.snapshot())
+                latestOnSnapshot.value(exoPlayer.snapshot().withSubtitleCues(subtitleCueTracker))
                 if (videoSize.width > 0 && videoSize.height > 0) {
                     videoAspectRatio = videoSize.width.toFloat() / videoSize.height.toFloat()
                 }
@@ -1015,7 +1020,12 @@ private fun ExoPlayerSurface(
 
                 override fun applySubtitleStyle(style: SubtitleStyleState) {
                     currentSubtitleStyle = style
-                    playerViewRef?.applySubtitleStyle(style, pipVideoHeightPx)
+                    playerViewRef?.applySubtitleStyle(style, pipVideoHeightPx, subtitleLiftFraction)
+                }
+
+                override fun setSubtitleBottomLift(fraction: Float) {
+                    subtitleLiftFraction = fraction
+                    playerViewRef?.applySubtitleStyle(currentSubtitleStyle, pipVideoHeightPx, fraction)
                 }
 
                 override fun applySubtitlePreferences(
@@ -1075,7 +1085,7 @@ private fun ExoPlayerSurface(
                     enabled = useLibass,
                     renderType = libassRenderType,
                 )
-                applySubtitleStyle(currentSubtitleStyle, pipVideoHeightPx)
+                applySubtitleStyle(currentSubtitleStyle, pipVideoHeightPx, subtitleLiftFraction)
             }
         },
         update = { playerView ->
@@ -1090,7 +1100,7 @@ private fun ExoPlayerSurface(
                 enabled = useLibass,
                 renderType = libassRenderType,
             )
-            playerView.applySubtitleStyle(currentSubtitleStyle, pipVideoHeightPx)
+            playerView.applySubtitleStyle(currentSubtitleStyle, pipVideoHeightPx, subtitleLiftFraction)
         },
     )
 }
@@ -1194,7 +1204,12 @@ private fun LibmpvPlayerSurface(
             }
         }
         val observer = object : MPV.EventObserver {
-            override fun eventProperty(property: String) = Unit
+            override fun eventProperty(property: String) {
+                if (property == "sub-text") {
+                    view.subtitleCueTracker.updateText(null)
+                    dispatchSnapshot()
+                }
+            }
             override fun eventProperty(property: String, value: Long) {
                 if (property == "cache-buffering-state") {
                     dispatchSnapshot(updateKeepScreenOn = true)
@@ -1215,7 +1230,12 @@ private fun LibmpvPlayerSurface(
                     dispatchSnapshot(updateKeepScreenOn = true)
                 }
             }
-            override fun eventProperty(property: String, value: String) = Unit
+            override fun eventProperty(property: String, value: String) {
+                if (property == "sub-text") {
+                    view.subtitleCueTracker.updateText(value)
+                    dispatchSnapshot()
+                }
+            }
             override fun eventProperty(property: String, value: Double) {
                 if (property == "duration" || property == "time-pos" || property == "speed") {
                     dispatchSnapshot()
@@ -1432,6 +1452,9 @@ private class NuvioLibmpvView(
     private var currentExternalSubtitles: List<com.nuvio.app.features.streams.StreamSubtitle> = emptyList()
     @Volatile
     private var latestSnapshot = PlayerPlaybackSnapshot()
+    private var subtitlePosition = 100
+    private var subtitleLiftFraction = 0f
+    val subtitleCueTracker = SubtitleCueTracker()
     @Volatile
     private var latestAudioTracks: List<LibmpvTrack> = emptyList()
     @Volatile
@@ -1470,6 +1493,7 @@ private class NuvioLibmpvView(
             "demuxer-cache-time" to MPV.mpvFormat.MPV_FORMAT_DOUBLE,
             "speed" to MPV.mpvFormat.MPV_FORMAT_DOUBLE,
             "track-list" to MPV.mpvFormat.MPV_FORMAT_NODE,
+            "sub-text" to MPV.mpvFormat.MPV_FORMAT_STRING,
         )
         props.forEach { (name, format) -> mpv.observeProperty(name, format) }
     }
@@ -1586,7 +1610,7 @@ private class NuvioLibmpvView(
             playbackSpeed = (mpv.getPropertyDouble("speed") ?: 1.0).toFloat(),
             videoWidth = videoWidth,
             videoHeight = videoHeight,
-        )
+        ).withSubtitleCues(subtitleCueTracker)
     }
 
     fun applyResizeMode(resizeMode: PlayerResizeMode) {
@@ -1762,9 +1786,17 @@ private class NuvioLibmpvView(
                     mpv.setPropertyInt("sub-font-size", style.toMpvSubtitleFontSize())
                     mpv.setPropertyInt("sub-outline-size", style.toMpvSubtitleOutlineSize())
                     mpv.setPropertyInt("sub-border-size", style.toMpvSubtitleOutlineSize())
-                    mpv.setPropertyInt("sub-pos", (100 - style.bottomOffset / 10).coerceIn(0, 100))
+                    subtitlePosition = (100 - style.bottomOffset / 10).coerceIn(0, 100)
+                    mpv.setPropertyInt("sub-pos", mpvSubtitlePositionWithLift(subtitlePosition, subtitleLiftFraction))
                     mpv.setPropertyBoolean("sub-filter-sdh", style.stripSdh)
                     mpv.setPropertyBoolean("sub-filter-sdh-harder", style.stripSdh)
+                }
+            }
+
+            override fun setSubtitleBottomLift(fraction: Float) {
+                executeMpv {
+                    subtitleLiftFraction = fraction
+                    mpv.setPropertyInt("sub-pos", mpvSubtitlePositionWithLift(subtitlePosition, subtitleLiftFraction))
                 }
             }
 
@@ -2157,11 +2189,19 @@ private fun displayedVideoHeightPx(viewSize: IntSize, videoSize: VideoSize): Flo
  * [pipVideoHeightPx] is null outside PiP. In PiP it is the video height outside PiP (0 if unknown),
  * so subtitles shrink and grow with the video exactly as it is shown full screen.
  */
-private fun PlayerView.applySubtitleStyle(style: SubtitleStyleState, pipVideoHeightPx: Float? = null) {
+private fun PlayerView.applySubtitleStyle(
+    style: SubtitleStyleState,
+    pipVideoHeightPx: Float? = null,
+    liftFraction: Float = 0f,
+) {
+    val liftInView = liftFraction.coerceIn(0f, PLAYER_SUBTITLE_MAX_LIFT)
     subtitleView?.apply {
         val baseBottomPaddingFraction = SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION * 2f / 3f
         val offsetFraction = (style.bottomOffset / 1000f).coerceIn(0f, 0.2f)
-        val bottomPaddingFraction = (baseBottomPaddingFraction + offsetFraction).coerceIn(0f, 0.4f)
+        val bottomPaddingFraction = maxOf(
+            (baseBottomPaddingFraction + offsetFraction).coerceIn(0f, 0.4f),
+            liftInView,
+        )
 
         setApplyEmbeddedStyles(false)
         setApplyEmbeddedFontSizes(false)
@@ -2388,6 +2428,7 @@ private class SubtitleOffsetRenderersFactory(
     private val shouldNormalizeCuePositionProvider: () -> Boolean,
     private val shouldStripSdhProvider: () -> Boolean,
     private val videoBoundsFractionProvider: () -> RectF?,
+    private val onCuesShown: (List<Cue>) -> Unit = {},
 ) : DefaultRenderersFactory(context) {
     override fun buildTextRenderers(
         context: Context,
@@ -2401,6 +2442,7 @@ private class SubtitleOffsetRenderersFactory(
             shouldNormalizeCuePositionProvider = shouldNormalizeCuePositionProvider,
             shouldStripSdhProvider = shouldStripSdhProvider,
             videoBoundsFractionProvider = videoBoundsFractionProvider,
+            onCuesShown = onCuesShown,
         )
         val startIndex = out.size
         super.buildTextRenderers(context, normalizingOutput, outputLooper, extensionRendererMode, out)
@@ -2418,15 +2460,19 @@ private class CueNormalizingTextOutput(
     private val shouldNormalizeCuePositionProvider: () -> Boolean,
     private val shouldStripSdhProvider: () -> Boolean,
     private val videoBoundsFractionProvider: () -> RectF?,
+    private val onCuesShown: (List<Cue>) -> Unit = {},
 ) : TextOutput {
     override fun onCues(cueGroup: CueGroup) {
         val processed = cueGroup.cues.mapNotNull(::processCue)
         delegate.onCues(CueGroup(processed, cueGroup.presentationTimeUs))
+        onCuesShown(processed)
     }
 
     @Deprecated("Uses the deprecated Media3 callback for text outputs.")
     override fun onCues(cues: List<Cue>) {
-        delegate.onCues(cues.mapNotNull(::processCue))
+        val processed = cues.mapNotNull(::processCue)
+        delegate.onCues(processed)
+        onCuesShown(processed)
     }
 
     private fun processCue(cue: Cue): Cue? {
