@@ -1429,7 +1429,9 @@ private class NuvioLibmpvView(
     @Volatile
     private var latestSubtitleTracks: List<LibmpvTrack> = emptyList()
     // mpv reports a live HLS stream's duration as what it has loaded so far, so it keeps growing
-    // while a VOD's stays put: the first duration seen for the current source, and whether it grew
+    // while a VOD's stays put: the source loaded last, the first duration seen for it (once mpv
+    // reports that source; until then it can still answer for the previous one), and whether it grew
+    private var durationTrackedPath: String? = null
     private var firstDurationMs = 0L
     private var durationGrows = false
 
@@ -1501,6 +1503,7 @@ private class NuvioLibmpvView(
         applyRequestHeadersNow(currentRequestHeaders)
         setPausedNow(!playWhenReady)
         mpv.setPropertyString("aid", "auto")
+        durationTrackedPath = sourceUrl.toMpvSource()
         firstDurationMs = 0L
         durationGrows = false
         mpv.command("loadfile", sourceUrl.toMpvSource(), "replace")
@@ -1564,7 +1567,7 @@ private class NuvioLibmpvView(
         val cacheBufferingState = mpv.getPropertyInt("cache-buffering-state")
         val durationMs = mpv.getPropertyDouble("duration").toMillis()
         val positionMs = mpv.getPropertyDouble("time-pos").toMillis()
-        if (durationMs > 0L) {
+        if (durationMs > 0L && mpv.getPropertyString("path") == durationTrackedPath) {
             if (firstDurationMs == 0L) firstDurationMs = durationMs
             else if (durationMs > firstDurationMs + LIVE_DURATION_GROWTH_MS) durationGrows = true
         }
