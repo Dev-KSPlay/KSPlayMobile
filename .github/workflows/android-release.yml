@@ -213,9 +213,10 @@ jobs:
           path: androidApp/build/outputs/apk/full/release/*.apk
           if-no-files-found: error
 
+  # iOS packaging is intentionally disabled: this workflow is for Android APK releases.
   ios:
-    name: Build iOS IPA
-    if: inputs.mode != 'dry-run'
+    name: Build iOS IPA (disabled)
+    if: false
     needs: prepare
     runs-on: macos-26
     timeout-minutes: 120
@@ -289,7 +290,6 @@ jobs:
     needs:
       - prepare
       - android
-      - ios
     runs-on: ubuntu-latest
     permissions:
       contents: write
