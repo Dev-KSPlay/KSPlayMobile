@@ -192,6 +192,17 @@ jobs:
             fi
           done
 
+          # Validate the actual keystore secret before Gradle spends several minutes building.
+          # Do not print passwords or the expected alias (GitHub may mask its value in logs).
+          if ! keytool -list -keystore "${keystore_path}" -storepass "${RELEASE_STORE_PASSWORD}" -alias "${RELEASE_KEY_ALIAS}" >/dev/null 2>&1; then
+            echo "Release signing preflight failed: the configured alias is not present in the supplied keystore, or the keystore password is incorrect." >&2
+            echo "Aliases available in the supplied keystore:" >&2
+            if ! keytool -list -keystore "${keystore_path}" -storepass "${RELEASE_STORE_PASSWORD}" 2>&1 | sed -n '1,25p' >&2; then
+              echo "The keystore could not be opened. Check NUVIO_RELEASE_KEYSTORE_BASE64 and NUVIO_RELEASE_STORE_PASSWORD." >&2
+            fi
+            exit 1
+          fi
+
       - name: Build full release APKs
         run: ./gradlew :androidApp:assembleFullRelease -Pnuvio.app.versionName="${RELEASE_VERSION}" --stacktrace
 
