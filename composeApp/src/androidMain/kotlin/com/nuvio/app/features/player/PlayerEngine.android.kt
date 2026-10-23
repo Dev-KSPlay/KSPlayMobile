@@ -1428,12 +1428,9 @@ private class NuvioLibmpvView(
     private var latestAudioTracks: List<LibmpvTrack> = emptyList()
     @Volatile
     private var latestSubtitleTracks: List<LibmpvTrack> = emptyList()
-    // mpv reports a live HLS stream's duration as what it has loaded so far, so it keeps growing
-    // while a VOD's stays put: the source loaded last, the first duration seen for it (once mpv
-    // reports that source; until then it can still answer for the previous one), and whether it grew
-    private var durationTrackedPath: String? = null
-    private var firstDurationMs = 0L
-    private var durationGrows = false
+    // The source loaded last, and whether its duration keeps growing (live, see LiveDurationGrowth)
+    private var requestedMpvPath: String? = null
+    private var liveDurationGrowth = LiveDurationGrowth()
 
     override fun initOptions() {
         setVo(videoOutput.mpvValue)
@@ -1503,9 +1500,7 @@ private class NuvioLibmpvView(
         applyRequestHeadersNow(currentRequestHeaders)
         setPausedNow(!playWhenReady)
         mpv.setPropertyString("aid", "auto")
-        durationTrackedPath = sourceUrl.toMpvSource()
-        firstDurationMs = 0L
-        durationGrows = false
+        requestedMpvPath = sourceUrl.toMpvSource()
         mpv.command("loadfile", sourceUrl.toMpvSource(), "replace")
         currentSourceAudioUrl?.takeIf { it.isNotBlank() }?.let { sourceAudioUrl ->
             mpv.command("audio-add", sourceAudioUrl.toMpvSource(), "auto")
@@ -1567,10 +1562,11 @@ private class NuvioLibmpvView(
         val cacheBufferingState = mpv.getPropertyInt("cache-buffering-state")
         val durationMs = mpv.getPropertyDouble("duration").toMillis()
         val positionMs = mpv.getPropertyDouble("time-pos").toMillis()
-        if (durationMs > 0L && mpv.getPropertyString("path") == durationTrackedPath) {
-            if (firstDurationMs == 0L) firstDurationMs = durationMs
-            else if (durationMs > firstDurationMs + LIVE_DURATION_GROWTH_MS) durationGrows = true
-        }
+        liveDurationGrowth = liveDurationGrowth.next(
+            mediaKey = requestedMpvPath,
+            durationMs = durationMs,
+            fromRequestedMedia = mpv.getPropertyString("path") == requestedMpvPath,
+        )
         val cachePositionMs = mpv.getPropertyDouble("demuxer-cache-time").toMillis()
         val isCacheBuffering = cacheBufferingState != null && cacheBufferingState in 0 until 100
         val isLoading = pausedForCache ||
@@ -1591,7 +1587,7 @@ private class NuvioLibmpvView(
             playbackSpeed = (mpv.getPropertyDouble("speed") ?: 1.0).toFloat(),
             videoWidth = videoWidth,
             videoHeight = videoHeight,
-            isLive = durationGrows,
+            isLive = liveDurationGrowth.grew,
         )
     }
 
@@ -1944,7 +1940,6 @@ private fun SubtitleStyleState.toMpvSubtitleBorderStyle(): String =
         "outline-and-shadow"
     }
 
-private const val LIVE_DURATION_GROWTH_MS = 10_000L
 private const val MPV_SUBTITLE_FONT_SIZE_SCALE = 55.0 / 18.0
 private const val MPV_SUBTITLE_FONT_SIZE_MIN = 36
 private const val MPV_SUBTITLE_FONT_SIZE_MAX = 122
