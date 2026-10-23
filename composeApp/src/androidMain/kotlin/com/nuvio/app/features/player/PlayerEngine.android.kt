@@ -1428,6 +1428,10 @@ private class NuvioLibmpvView(
     private var latestAudioTracks: List<LibmpvTrack> = emptyList()
     @Volatile
     private var latestSubtitleTracks: List<LibmpvTrack> = emptyList()
+    // mpv reports a live HLS stream's duration as what it has loaded so far, so it keeps growing
+    // while a VOD's stays put: the first duration seen for the current source, and whether it grew
+    private var firstDurationMs = 0L
+    private var durationGrows = false
 
     override fun initOptions() {
         setVo(videoOutput.mpvValue)
@@ -1497,6 +1501,8 @@ private class NuvioLibmpvView(
         applyRequestHeadersNow(currentRequestHeaders)
         setPausedNow(!playWhenReady)
         mpv.setPropertyString("aid", "auto")
+        firstDurationMs = 0L
+        durationGrows = false
         mpv.command("loadfile", sourceUrl.toMpvSource(), "replace")
         currentSourceAudioUrl?.takeIf { it.isNotBlank() }?.let { sourceAudioUrl ->
             mpv.command("audio-add", sourceAudioUrl.toMpvSource(), "auto")
@@ -1558,6 +1564,10 @@ private class NuvioLibmpvView(
         val cacheBufferingState = mpv.getPropertyInt("cache-buffering-state")
         val durationMs = mpv.getPropertyDouble("duration").toMillis()
         val positionMs = mpv.getPropertyDouble("time-pos").toMillis()
+        if (durationMs > 0L) {
+            if (firstDurationMs == 0L) firstDurationMs = durationMs
+            else if (durationMs > firstDurationMs + LIVE_DURATION_GROWTH_MS) durationGrows = true
+        }
         val cachePositionMs = mpv.getPropertyDouble("demuxer-cache-time").toMillis()
         val isCacheBuffering = cacheBufferingState != null && cacheBufferingState in 0 until 100
         val isLoading = pausedForCache ||
@@ -1578,6 +1588,7 @@ private class NuvioLibmpvView(
             playbackSpeed = (mpv.getPropertyDouble("speed") ?: 1.0).toFloat(),
             videoWidth = videoWidth,
             videoHeight = videoHeight,
+            isLive = durationGrows,
         )
     }
 
@@ -1930,6 +1941,7 @@ private fun SubtitleStyleState.toMpvSubtitleBorderStyle(): String =
         "outline-and-shadow"
     }
 
+private const val LIVE_DURATION_GROWTH_MS = 10_000L
 private const val MPV_SUBTITLE_FONT_SIZE_SCALE = 55.0 / 18.0
 private const val MPV_SUBTITLE_FONT_SIZE_MIN = 36
 private const val MPV_SUBTITLE_FONT_SIZE_MAX = 122
@@ -1947,6 +1959,7 @@ private fun ExoPlayer.snapshot(): PlayerPlaybackSnapshot {
         playbackSpeed = playbackParameters.speed,
         videoWidth = videoWidth,
         videoHeight = videoHeight,
+        isLive = isCurrentMediaItemLive,
     )
 }
 
