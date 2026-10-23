@@ -145,6 +145,9 @@ jobs:
       RELEASE_VERSION: ${{ needs.prepare.outputs.tag }}
       RELEASE_PROPERTIES_BASE64: ${{ secrets.NUVIO_LOCAL_PROPERTIES_BASE64 }}
       RELEASE_KEYSTORE_BASE64: ${{ secrets.NUVIO_RELEASE_KEYSTORE_BASE64 }}
+      RELEASE_STORE_PASSWORD: ${{ secrets.NUVIO_RELEASE_STORE_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.NUVIO_RELEASE_KEY_ALIAS }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.NUVIO_RELEASE_KEY_PASSWORD }}
 
     steps:
       - name: Check out source
@@ -162,11 +165,18 @@ jobs:
       - name: Configure release properties
         run: |
           keystore_path="${RUNNER_TEMP}/nuvio-release.jks"
+          : "${RELEASE_STORE_PASSWORD:?Missing GitHub Actions secret NUVIO_RELEASE_STORE_PASSWORD}"
+          : "${RELEASE_KEY_ALIAS:?Missing GitHub Actions secret NUVIO_RELEASE_KEY_ALIAS}"
+          : "${RELEASE_KEY_PASSWORD:?Missing GitHub Actions secret NUVIO_RELEASE_KEY_PASSWORD}"
+
           printf '%s' "${RELEASE_KEYSTORE_BASE64}" | base64 --decode > "${keystore_path}"
           printf '%s' "${RELEASE_PROPERTIES_BASE64}" | base64 --decode > local.properties
 
-          sed -i -E '/^[[:space:]]*(sdk\.dir|NUVIO_RELEASE_STORE_FILE)[[:space:]]*=/d' local.properties
-          printf '\nNUVIO_RELEASE_STORE_FILE=%s\n' "${keystore_path}" >> local.properties
+          # Keep signing credentials sourced from their dedicated Actions secrets.
+          # Strip stale/local signing values first so local.properties cannot override them.
+          sed -i -E '/^[[:space:]]*(sdk\.dir|NUVIO_RELEASE_STORE_FILE|NUVIO_RELEASE_STORE_PASSWORD|NUVIO_RELEASE_KEY_ALIAS|NUVIO_RELEASE_KEY_PASSWORD)[[:space:]]*=/d' local.properties
+          printf '\nNUVIO_RELEASE_STORE_FILE=%s\nNUVIO_RELEASE_STORE_PASSWORD=%s\nNUVIO_RELEASE_KEY_ALIAS=%s\nNUVIO_RELEASE_KEY_PASSWORD=%s\n' \
+            "${keystore_path}" "${RELEASE_STORE_PASSWORD}" "${RELEASE_KEY_ALIAS}" "${RELEASE_KEY_PASSWORD}" >> local.properties
 
           required_properties=(
             NUVIO_RELEASE_STORE_PASSWORD
