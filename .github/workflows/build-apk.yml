@@ -38,7 +38,18 @@ jobs:
             echo "::error::Secret NUVIO_LOCAL_PROPERTIES_BASE64 não encontrado. Crie em Settings > Secrets and variables > Actions."
             exit 1
           fi
-          printf '%s' "$LOCAL_PROPERTIES_BASE64" | base64 --decode > local.properties
+          if printf '%s' "$LOCAL_PROPERTIES_BASE64" | grep -Eq '^[[:space:]]*(KSPLAY|NUVIO)_[A-Z_]+[[:space:]]*='; then
+            # o secret foi colado como texto puro (sem base64): aceita assim mesmo
+            printf '%s\n' "$LOCAL_PROPERTIES_BASE64" > local.properties
+            echo "Secret em texto puro detectado; usando como está."
+          else
+            # base64: ignora espaços e quebras de linha que a colagem às vezes adiciona
+            if ! printf '%s' "$LOCAL_PROPERTIES_BASE64" | tr -d '[:space:]' | base64 --decode > local.properties 2>/dev/null \
+               || [ ! -s local.properties ]; then
+              echo "::error::O secret não é um Base64 válido. Gere de novo com o comando do PowerShell e cole tudo em uma linha."
+              exit 1
+            fi
+          fi
           # remove caminhos que só existem no seu computador
           sed -i -E '/^[[:space:]]*(sdk\.dir|NUVIO_RELEASE_STORE_FILE)[[:space:]]*=/d' local.properties
 
