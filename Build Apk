@@ -1,0 +1,64 @@
+name: Build APK (KSPlay Mobile)
+
+# Rodar manualmente: aba Actions > "Build APK (KSPlay Mobile)" > Run workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Build APK de teste
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Preparar local.properties (URL e chave do Supabase)
+        env:
+          LOCAL_PROPERTIES_BASE64: ${{ secrets.NUVIO_LOCAL_PROPERTIES_BASE64 }}
+        run: |
+          if [ -z "$LOCAL_PROPERTIES_BASE64" ]; then
+            echo "::error::Secret NUVIO_LOCAL_PROPERTIES_BASE64 não encontrado. Crie em Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          printf '%s' "$LOCAL_PROPERTIES_BASE64" | base64 --decode > local.properties
+          # remove caminhos que só existem no seu computador
+          sed -i -E '/^[[:space:]]*(sdk\.dir|NUVIO_RELEASE_STORE_FILE)[[:space:]]*=/d' local.properties
+
+      - name: Conferir se URL e chave estão preenchidas (sem mostrar os valores)
+        run: |
+          for name in SUPABASE_URL SUPABASE_ANON_KEY; do
+            if ! grep -Eq "^[[:space:]]*(KSPLAY|NUVIO)_${name}[[:space:]]*=[[:space:]]*[^[:space:]]+" local.properties; then
+              echo "::error::${name} está vazio ou ausente no local.properties do secret."
+              exit 1
+            fi
+          done
+          echo "Configuração do Supabase encontrada."
+
+      - name: Compilar APK
+        run: ./gradlew :androidApp:assembleFullDebug -Pnuvio.android.distribution=full -Pnuvio.ios.distribution=appstore --stacktrace
+
+      - name: Enviar APK
+        uses: actions/upload-artifact@v7
+        with:
+          path: androidApp/build/outputs/apk/full/debug/androidApp-full-debug.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
